@@ -11,7 +11,7 @@
   };
 
   const S = {
-    mode: "server", active: false, stream: null, timer: null, inflight: false,
+    mode: "server", active: false, stream: null, timer: null, inflight: 0,
     station: "", deviceId: "", fps: 0, latency: 0, error: "", sent: 0, fpsStarted: 0,
     cfg: null, onMode: null,
     tracks: new Map(),  // track_id -> kotak yang dilacak lokal (lihat "Pelacakan lokal")
@@ -80,6 +80,7 @@
     S.active = true;
     S.error = "";
     S.sent = 0;
+    Object.assign(S, { inflight: 0, lastSend: 0, lastApplied: 0, latEma: 0, slow: false, failures: 0, retryAt: 0 });
     S.fpsStarted = performance.now();
     el.toggle.textContent = "Berhenti";
     el.toggle.classList.replace("btn-success", "btn-danger");
@@ -103,61 +104,88 @@
     if (S.mode === "usb") msg("Kamera USB berhenti. Klik Mulai untuk mengaktifkan.");
   }
 
+  // --- Pengiriman frame adaptif ----------------------------------------------------------------
+  // LAN (latensi rendah): 640 px, JPEG 0,82, satu frame dalam perjalanan.
+  // Koneksi jauh/lambat (mis. dari luar RS lewat internet): 480 px, JPEG 0,72 (±separuh data) dan
+  // sampai dua frame dalam perjalanan sekaligus, agar throughput tidak dibatasi waktu bolak-balik.
+  const SLOW_MS = 220, FAST_MS = 140;
+
+  function isSlowLink() {
+    if (S.slow && S.latEma < FAST_MS) S.slow = false;
+    else if (!S.slow && S.latEma > SLOW_MS) S.slow = true;
+    return S.slow;
+  }
+
   function grabFrame() {
     const v = el.video;
     if (!v.videoWidth) return null;
-    const scale = Math.min(1, MAX_WIDTH / v.videoWidth);
-    const c = grabFrame.canvas || (grabFrame.canvas = document.createElement("canvas"));
+    const slow = isSlowLink();
+    const scale = Math.min(1, (slow ? 480 : MAX_WIDTH) / v.videoWidth);
+    // Kanvas baru per frame: aman saat dua frame diproses bersamaan.
+    const c = document.createElement("canvas");
     c.width = Math.round(v.videoWidth * scale);
     c.height = Math.round(v.videoHeight * scale);
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-    return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.82));
+    return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", slow ? 0.72 : 0.82));
   }
 
-  async function loop() {
-    if (!S.active) return;
+  async function sendFrame() {
     const t0 = performance.now();
     const blob = await grabFrame();
-    if (blob && S.active) {
-      const form = new FormData();
-      form.append("frame", blob, "frame.jpg");
-      const res = await FaceCommon.api(`${S.cfg.stationFrameBase}${encodeURIComponent(S.station)}/frame/`,
-        { method: "POST", body: form, timeout: 8000 });
-      S.latency = Math.round(performance.now() - t0);
-      if (res.ok) {
+    if (!blob || !S.active) return;
+    const form = new FormData();
+    form.append("frame", blob, "frame.jpg");
+    const res = await FaceCommon.api(`${S.cfg.stationFrameBase}${encodeURIComponent(S.station)}/frame/`,
+      { method: "POST", body: form, timeout: 8000 });
+    if (!S.active) return;
+    const lat = performance.now() - t0;
+    S.latency = Math.round(lat);
+    S.latEma = S.latEma ? S.latEma * 0.8 + lat * 0.2 : lat;
+    if (res.ok) {
+      // Abaikan jawaban yang datang lebih lambat dari jawaban frame yang lebih baru.
+      if (t0 >= S.lastApplied) {
         syncTracks(res.data.faces, t0);  // t0 = saat frame ini diambil (untuk kompensasi latensi)
-        S.error = "";
-        S.failures = 0;
-        S.sent += 1;
-        const secs = (performance.now() - S.fpsStarted) / 1000;
-        if (secs >= 2) { S.fps = S.sent / secs; S.sent = 0; S.fpsStarted = performance.now(); }
-      } else if (res.error.code === "UNAUTHENTICATED") {
-        stop(); setStatus("Sesi login berakhir, silakan login ulang."); return;
-      } else if (isTransient(res.error.code)) {
-        // Gangguan sesaat (jaringan/timeout/server sibuk): coba ulang diam-diam, tampilkan pesan
-        // hanya bila berulang, agar petugas tidak terganggu oleh satu frame yang gagal.
-        S.failures = (S.failures || 0) + 1;
-        S.totalFailures = (S.totalFailures || 0) + 1;
-        S.lastFailure = res.error.code;
-        if (S.failures >= 2) S.tracks.clear();
-        S.error = S.failures >= 3 ? `Koneksi ke server terganggu (${res.error.message}) — mencoba ulang…` : "";
-      } else {
-        S.tracks.clear();
-        S.error = res.error.message;
+        S.lastApplied = t0;
       }
+      S.error = "";
+      S.failures = 0;
+      S.sent += 1;
+      const secs = (performance.now() - S.fpsStarted) / 1000;
+      if (secs >= 2) { S.fps = S.sent / secs; S.sent = 0; S.fpsStarted = performance.now(); }
+    } else if (res.error.code === "UNAUTHENTICATED") {
+      stop(); setStatus("Sesi login berakhir, silakan login ulang.");
+    } else if (isTransient(res.error.code)) {
+      // Gangguan sesaat (jaringan/timeout/server sibuk): coba ulang diam-diam, tampilkan pesan
+      // hanya bila berulang, agar petugas tidak terganggu oleh satu frame yang gagal.
+      S.failures = (S.failures || 0) + 1;
+      S.totalFailures = (S.totalFailures || 0) + 1;
+      S.lastFailure = res.error.code;
+      if (S.failures >= 2) S.tracks.clear();
+      S.error = S.failures >= 3 ? `Koneksi ke server terganggu (${res.error.message}) — mencoba ulang…` : "";
+      S.retryAt = performance.now() + Math.min(5000, 500 * 2 ** (S.failures - 1));  // 0,5 → 1 → 2 → 4 → 5 s
+    } else {
+      S.tracks.clear();
+      S.error = res.error.message;
+      S.retryAt = performance.now() + 1000;
     }
+  }
+
+  // Penjadwal: kirim frame bila slot tersedia, jeda fps terpenuhi, dan tidak sedang mundur karena gagal.
+  function loop() {
+    if (!S.active) return;
+    const now = performance.now();
     const interval = 1000 / Math.max(0.5, S.cfg.stationMaxFps || 4);
-    S.timer = setTimeout(loop, nextWait(interval - (performance.now() - t0)));
+    const maxInflight = isSlowLink() && !S.failures ? 2 : 1;
+    if (S.inflight < maxInflight && now - S.lastSend >= interval && now >= (S.retryAt || 0)) {
+      S.inflight += 1;
+      S.lastSend = now;
+      sendFrame().finally(() => { S.inflight -= 1; });
+    }
+    S.timer = setTimeout(loop, 15);
   }
 
   function isTransient(code) {
     return code === "NETWORK" || code === "TIMEOUT" || code === "RATE_LIMITED" || /^HTTP_5\d\d$/.test(code);
-  }
-
-  // Saat gagal berulang, mundur bertahap (0,5 s → 1 → 2 → 4 → maks 5 s); error lain: 1 frame/detik.
-  function nextWait(ms) {
-    if (S.failures) return Math.max(ms, Math.min(5000, 500 * 2 ** (S.failures - 1)));
-    return Math.max(S.error ? 1000 : 0, ms);
   }
 
   // --- Pelacakan lokal di browser -------------------------------------------------------------
