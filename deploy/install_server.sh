@@ -97,8 +97,19 @@ else
   ask INSTALL_DB_PORT "Port database" "3306"
   ask INSTALL_DB_USER "User database customsik" "sik"
   ask_secret INSTALL_DB_PASSWORD "Password database customsik"
-  ask INSTALL_RO_USER "User baca-saja Khanza (face_ro)" "face_ro"
+  ask INSTALL_RO_USER "User untuk membaca data Khanza (Enter = pakai user yang sama)" "$INSTALL_DB_USER"
+  if [ -z "${INSTALL_RO_PASSWORD:-}" ] && [ "$INSTALL_RO_USER" = "$INSTALL_DB_USER" ]; then
+    INSTALL_RO_PASSWORD="$INSTALL_DB_PASSWORD"
+  fi
   ask_secret INSTALL_RO_PASSWORD "Password $INSTALL_RO_USER"
+  # Akun yang sudah ada (mis. sik) biasanya berhak tulis: izinkan secara eksplisit. Koneksi baca
+  # tetap dikunci READ ONLY per sesi oleh aplikasi.
+  INSTALL_ALLOW_PRIVILEGED="false"
+  if [ "$INSTALL_RO_USER" != "face_ro" ]; then
+    INSTALL_ALLOW_PRIVILEGED="true"
+    echo "Catatan: user '$INSTALL_RO_USER' dipakai untuk membaca Khanza -> KHANZA_ALLOW_PRIVILEGED_USER=true"
+    echo "         (koneksi baca tetap READ ONLY per sesi; hanya SELECT dari config/khanza_queries.json)."
+  fi
   ask INSTALL_RW_USER "User registrasi kunjungan Khanza (INSERT reg_periksa)" "$INSTALL_DB_USER"
   if [ -z "${INSTALL_RW_PASSWORD:-}" ] && [ "$INSTALL_RW_USER" = "$INSTALL_DB_USER" ]; then
     INSTALL_RW_PASSWORD="$INSTALL_DB_PASSWORD"
@@ -112,6 +123,7 @@ else
   CPUS="$(nproc)"; VISION_CPUS=$(( CPUS / 2 > 0 ? CPUS / 2 : 1 ))
   export INSTALL_DOMAIN INSTALL_SERVER_IP INSTALL_DB_HOST INSTALL_DB_PORT INSTALL_DB_USER INSTALL_DB_PASSWORD \
          INSTALL_RO_USER INSTALL_RO_PASSWORD INSTALL_RW_USER INSTALL_RW_PASSWORD INSTALL_EMBEDDING_KEYS \
+         INSTALL_ALLOW_PRIVILEGED \
          VISION_CPUS NPM_NETWORK_DETECTED
   umask 077
   python3 - <<'PYEOF'
@@ -139,6 +151,7 @@ values = {
     "FACE_DEFAULT_CAMERA": "usb", "GUNICORN_WORKERS": "2", "VISION_CPUS": e["VISION_CPUS"],
     "KHANZA_DB_HOST": e["INSTALL_DB_HOST"], "KHANZA_DB_PORT": e["INSTALL_DB_PORT"],
     "KHANZA_DB_USER": e["INSTALL_RO_USER"], "KHANZA_DB_PASSWORD": literal(e["INSTALL_RO_PASSWORD"]),
+    "KHANZA_ALLOW_PRIVILEGED_USER": e["INSTALL_ALLOW_PRIVILEGED"],
     "KHANZA_RW_DB_USER": e["INSTALL_RW_USER"], "KHANZA_RW_DB_PASSWORD": literal(e["INSTALL_RW_PASSWORD"]),
 }
 text = open(".env.production.example").read()
@@ -180,17 +193,23 @@ info "Membangun image aplikasi"
 
 info "Menguji koneksi ke database server B dari dalam container"
 if ! "${COMPOSE[@]}" run --rm --no-deps web manage face_check_db; then
+  IP_A="${SERVER_IP:-<IP-server-A>}"
   cat >&2 <<EOF
 
-Koneksi/pemeriksaan database gagal. Di server B (oleh DBA), pastikan:
-  - MariaDB mendengarkan di LAN dan firewall mengizinkan IP server ini:
-      sudo ufw allow from ${SERVER_IP:-<IP-server-A>} to any port 3306 proto tcp
-  - user customsik ($(envval DB_USER)) boleh login dari ${SERVER_IP:-<IP-server-A>}
-  - user baca-saja Khanza (lihat docs/DEPLOY_PRODUCTION.md bagian 3):
-      CREATE USER '$(envval KHANZA_DB_USER)'@'${SERVER_IP:-<IP-server-A>}' IDENTIFIED BY '<password>';
-      GRANT SELECT ON yatofaasli.pasien TO '$(envval KHANZA_DB_USER)'@'${SERVER_IP:-<IP-server-A>}';  (dst. 7 tabel)
-Lalu jalankan ulang skrip ini.
+Koneksi/pemeriksaan database gagal. Di server B, pastikan:
+  - MariaDB mendengarkan di LAN (bind-address bukan 127.0.0.1) dan firewall mengizinkan IP server ini:
+      sudo ufw allow from $IP_A to any port 3306 proto tcp
+  - user '$(envval DB_USER)' boleh login dari $IP_A (cek: SELECT user,host FROM mysql.user WHERE user='$(envval DB_USER)';
+    host '%' atau '$IP_A'), dan password di .env.production benar.
 EOF
+  if [ "$(envval KHANZA_DB_USER)" != "$(envval DB_USER)" ]; then
+    cat >&2 <<EOF
+  - user baca Khanza '$(envval KHANZA_DB_USER)' juga boleh login dari $IP_A dengan hak SELECT
+    (docs/DEPLOY_PRODUCTION.md bagian 3).
+EOF
+  fi
+  echo "Uji manual dari server ini: mysql -h $(envval DB_HOST) -u $(envval DB_USER) -p -e 'SELECT 1'" >&2
+  echo "Lalu jalankan ulang skrip ini." >&2
   exit 1
 fi
 if [ "$(envval KHANZA_ENABLED)" = "true" ] && [ "${INSTALL_SKIP_KHANZA_CHECK:-0}" != "1" ]; then

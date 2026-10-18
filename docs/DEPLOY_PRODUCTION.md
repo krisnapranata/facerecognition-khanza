@@ -43,8 +43,17 @@ Perkiraan kapasitas: ±1 loket aktif per 0,15–0,25 core CPU (tergantung jumlah
    ```bash
    sudo ufw allow from 192.168.1.20 to any port 3306 proto tcp
    ```
-2. User baca-saja Khanza untuk **host server A** (user `face_ro@localhost` yang dibuat saat demo tidak
-   berlaku dari server lain):
+2. **Pilihan A — pakai akun yang sudah ada (mis. `sik`)**, tanpa membuat user baru. Cukup pastikan `sik`
+   boleh login dari IP server A (`SELECT user,host FROM mysql.user WHERE user='sik';` → host `%` atau IP
+   server A). `install_server.sh` otomatis menyetel `KHANZA_ALLOW_PRIVILEGED_USER=true`. Keamanannya
+   tetap dijaga di aplikasi:
+   * koneksi baca dikunci `SET SESSION TRANSACTION READ ONLY`, sehingga database sendiri menolak
+     UPDATE/DELETE (sudah diuji: *Cannot execute statement in a READ ONLY transaction*);
+   * hanya SELECT dari `config/khanza_queries.json` yang dijalankan;
+   * satu-satunya jalur tulis (registrasi `reg_periksa`) memakai allowlist pernyataan persis.
+
+   **Pilihan B — user baca-saja khusus (lebih ketat)** untuk **host server A** (user `face_ro@localhost`
+   yang dibuat saat demo tidak berlaku dari server lain):
    ```sql
    CREATE USER 'face_ro'@'192.168.1.20' IDENTIFIED BY '<password-kuat>';
    GRANT SELECT ON yatofaasli.pasien TO 'face_ro'@'192.168.1.20';
@@ -59,7 +68,7 @@ Perkiraan kapasitas: ±1 loket aktif per 0,15–0,25 core CPU (tergantung jumlah
    sesuai keputusan operator) harus boleh login dari IP server A. Disarankan user khusus berhak
    terbatas (lihat docs/KHANZA_INTEGRATION.md).
 
-Uji dari server A: `mysql -h <IP-DB-server-B> -u face_ro -p yatofaasli -e "SELECT COUNT(*) FROM pasien"`.
+Uji dari server A: `mysql -h <IP-DB-server-B> -u sik -p yatofaasli -e "SELECT COUNT(*) FROM pasien"` (atau `-u face_ro` untuk pilihan B).
 
 ## 4. Server A (aplikasi)
 

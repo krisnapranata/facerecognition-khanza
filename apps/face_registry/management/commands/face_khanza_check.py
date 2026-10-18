@@ -17,6 +17,25 @@ WRITE_PRIVS = re.compile(r"\b(ALL PRIVILEGES|INSERT|UPDATE|DELETE|DROP|ALTER|CRE
                          r"EXECUTE|FILE|SUPER|TRIGGER|EVENT|LOCK TABLES|REFERENCES)\b", re.IGNORECASE)
 
 
+def privilege_verdict(grants: list[str], read_only: bool, allow_privileged: bool) -> tuple[str, str]:
+    """Kembalikan (level, pesan): level 'ok' | 'warn' | 'error'.
+
+    Sesi READ ONLY selalu wajib. User berhak tulis (mis. akun Khanza yang sudah ada) hanya boleh
+    bila operator mengizinkan secara eksplisit lewat KHANZA_ALLOW_PRIVILEGED_USER=true.
+    """
+    if not read_only:
+        return "error", "Sesi tidak dalam mode READ ONLY"
+    privileged = any(WRITE_PRIVS.search(g.split(" TO ")[0]) for g in grants)
+    if not privileged:
+        return "ok", "Hak akses: hanya SELECT"
+    if allow_privileged:
+        return "warn", ("User Khanza memiliki hak tulis/administratif; diizinkan operator "
+                        "(KHANZA_ALLOW_PRIVILEGED_USER=true). Koneksi baca tetap dikunci READ ONLY per sesi "
+                        "dan hanya menjalankan SELECT dari config/khanza_queries.json.")
+    return "error", ("User Khanza memiliki hak tulis/administratif. Gunakan user baca-saja (SELECT saja), "
+                     "atau izinkan secara sadar dengan KHANZA_ALLOW_PRIVILEGED_USER=true.")
+
+
 class Command(BaseCommand):
     help = "Periksa koneksi, hak akses baca-saja, dan query Khanza"
 
@@ -41,14 +60,12 @@ class Command(BaseCommand):
             cursor.execute("SHOW GRANTS FOR CURRENT_USER()")
             grants = [g[0] for g in cursor.fetchall()]
         self.stdout.write(f"User aktif: {user}; sesi READ ONLY={bool(read_only)}")
-        bad = [g for g in grants if WRITE_PRIVS.search(g.split(" TO ")[0])]
         for g in grants:
             self.stdout.write("  " + re.sub(r"IDENTIFIED BY PASSWORD '[^']*'", "IDENTIFIED BY PASSWORD ***", g))
-        if bad:
-            raise CommandError("User Khanza memiliki hak tulis/administratif. Gunakan user baca-saja (SELECT saja).")
-        if not read_only:
-            raise CommandError("Sesi tidak dalam mode READ ONLY")
-        self.stdout.write(self.style.SUCCESS("Hak akses: hanya SELECT"))
+        level, message = privilege_verdict(grants, bool(read_only), settings.KHANZA_ALLOW_PRIVILEGED_USER)
+        if level == "error":
+            raise CommandError(message)
+        self.stdout.write(self.style.WARNING(message) if level == "warn" else self.style.SUCCESS(message))
 
         search = khanza.KhanzaPatientLookupService()
         control = khanza.KhanzaControlScheduleService()

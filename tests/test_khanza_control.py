@@ -265,3 +265,29 @@ class KhanzaRegistrationTests(FaceTestCase):
 
     def test_synthetic_basis_not_allowed_with_real_patients(self):
         self.assertEqual(self._register(basis="DEMO_SYNTHETIC").status_code, 422)
+
+
+class KhanzaPrivilegeCheckTests(SimpleTestCase):
+    """face_khanza_check: akun berhak tulis (mis. sik) hanya boleh bila diizinkan eksplisit; READ ONLY wajib."""
+
+    def setUp(self):
+        from apps.face_registry.management.commands.face_khanza_check import privilege_verdict
+
+        self.verdict = privilege_verdict
+        self.select_only = ["GRANT USAGE ON *.* TO `face_ro`@`%`", "GRANT SELECT ON `yatofaasli`.`pasien` TO `face_ro`@`%`"]
+        self.privileged = ["GRANT ALL PRIVILEGES ON *.* TO `sik`@`%` WITH GRANT OPTION"]
+
+    def test_select_only_ok(self):
+        self.assertEqual(self.verdict(self.select_only, True, False)[0], "ok")
+
+    def test_privileged_rejected_by_default(self):
+        level, msg = self.verdict(self.privileged, True, False)
+        self.assertEqual(level, "error")
+        self.assertIn("KHANZA_ALLOW_PRIVILEGED_USER", msg)
+
+    def test_privileged_allowed_explicitly_warns(self):
+        self.assertEqual(self.verdict(self.privileged, True, True)[0], "warn")
+
+    def test_read_only_session_always_required(self):
+        self.assertEqual(self.verdict(self.select_only, False, True)[0], "error")
+        self.assertEqual(self.verdict(self.privileged, False, True)[0], "error")

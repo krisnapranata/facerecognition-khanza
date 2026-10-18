@@ -135,6 +135,9 @@ DATABASES = {
 KHANZA_ENABLED = env_bool("KHANZA_ENABLED", False)
 KHANZA_SCHEMA_VERIFIED = env_bool("KHANZA_SCHEMA_VERIFIED", False)
 KHANZA_QUERY_FILE = env("KHANZA_QUERY_FILE", "")
+# Izinkan user Khanza yang punya hak tulis (mis. akun 'sik' yang sudah ada) untuk koneksi baca.
+# Koneksi tetap dikunci READ ONLY per sesi; face_khanza_check hanya memberi peringatan.
+KHANZA_ALLOW_PRIVILEGED_USER = env_bool("KHANZA_ALLOW_PRIVILEGED_USER", False)
 if KHANZA_ENABLED:
     DATABASES["khanza"] = {
         "ENGINE": "django.db.backends.mysql",
