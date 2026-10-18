@@ -147,6 +147,27 @@ Petugas loket cukup login dengan **akun SIMRS Khanza** masing-masing (harus puny
      ```
    * Save
 
+### 6b. Bila memakai domain publik (mis. `face.rsiyatofa.co.id`)
+
+Pakai sertifikat **Let's Encrypt** dari NPM (gratis, dipercaya semua browser, perpanjang otomatis) —
+**tidak perlu** CA internal di PC loket.
+
+1. DNS publik (di panel domain `.co.id`): A record `face.rsiyatofa.co.id` → **IP publik RS**.
+2. Router/firewall RS: teruskan port **80 dan 443** ke `IP_APP` (port 80 wajib untuk verifikasi Let's Encrypt).
+3. NPM → **SSL Certificates → Add → Let's Encrypt**: Domain `face.rsiyatofa.co.id`, email admin, I Agree.
+4. Proxy Host seperti langkah 6, tab *SSL* pilih sertifikat Let's Encrypt tadi, **Force SSL**, **HTTP/2**, **HSTS** ON.
+5. **Batasi akses (sangat disarankan)** — aplikasi ini memuat data biometrik & data pasien:
+   NPM → **Access Lists → Add**: *Allow* jaringan RS (mis. `192.168.0.0/16`) dan IP publik kantor/cabang
+   yang memang perlu, *Deny* sisanya → pilih Access List ini di Proxy Host.
+   Tanpa Access List, halaman login terbuka untuk seluruh internet (tetap dilindungi login, pembatasan
+   percobaan login, dan audit log).
+6. PC di dalam RS: buat **split-DNS** di DNS internal/router `face.rsiyatofa.co.id → IP_APP` agar frame
+   kamera tetap lewat LAN (lebih cepat, tidak membebani internet), atau pastikan router mendukung NAT loopback.
+7. PC loket: `.\setup-loket.ps1 -ServerUrl https://face.rsiyatofa.co.id -NoCa -Station loket-1`
+
+Saat `install_server.sh` menanyakan domain, isi `face.rsiyatofa.co.id`; ringkasan di akhir skrip otomatis
+menampilkan langkah Let's Encrypt.
+
 ## 7. DNS
 
 Pilih salah satu:

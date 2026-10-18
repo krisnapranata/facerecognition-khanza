@@ -244,20 +244,40 @@ done
 
 # ---------------------------------------------------------------- 9. ringkasan
 COMPOSE_STR="${COMPOSE[*]}"
+IPX="${SERVER_IP:-<IP-server>}"
+# Domain internal (.local/.lan/.internal/.home/.test) -> sertifikat CA internal; selain itu -> Let's Encrypt.
+if [[ "$DOMAIN" =~ \.(local|lan|internal|home|test|localdomain)$ ]]; then PUBLIC_DOMAIN=0; else PUBLIC_DOMAIN=1; fi
+if [ "$PUBLIC_DOMAIN" = "1" ]; then
+  SSL_STEP="   a. Pastikan DNS publik: A record $DOMAIN -> IP publik RS, dan router meneruskan port 80 & 443
+      ke $IPX (port 80 wajib terbuka agar Let's Encrypt bisa memverifikasi domain).
+   b. SSL Certificates -> Add SSL Certificate -> Let's Encrypt
+        Domain Names : $DOMAIN   (centang I Agree, isi email admin)
+   c. Access Lists -> Add (SANGAT disarankan): Allow IP jaringan RS (mis. 192.168.0.0/16 dan
+      IP publik kantor/cabang), Deny all -> pasang di Proxy Host, kecuali memang harus terbuka internet."
+  SSL_TAB="sertifikat Let's Encrypt $DOMAIN, Force SSL ON, HTTP/2 ON, HSTS ON"
+  DNS_STEP="4) PC di dalam jaringan RS: buat split-DNS (DNS internal/router) $DOMAIN -> $IPX agar lalu lintas
+   kamera tetap di LAN, atau pastikan router mendukung NAT loopback/hairpin."
+  PC_CMD=".\\setup-loket.ps1 -ServerUrl https://$DOMAIN -NoCa -Station loket-1"
+else
+  SSL_STEP="   a. SSL Certificates -> Add SSL Certificate -> Custom
+        Certificate Key : $PROJECT_DIR/deploy/certs/server.key
+        Certificate     : $PROJECT_DIR/deploy/certs/server.crt"
+  SSL_TAB="sertifikat custom di atas, Force SSL ON, HTTP/2 ON"
+  DNS_STEP="4) DNS: $DOMAIN -> $IPX (DNS internal/router), atau pakai -HostsIp di PC loket."
+  PC_CMD=".\\setup-loket.ps1 -ServerUrl https://$DOMAIN -HostsIp $IPX -Station loket-1"
+fi
 cat <<EOF
 
 =====================================================================
  Instalasi selesai. Aplikasi siap diteruskan oleh Nginx Proxy Manager.
 =====================================================================
-1) NPM UI (http://${SERVER_IP:-<IP-server>}:81)
-   a. SSL Certificates -> Add SSL Certificate -> Custom
-        Certificate Key : $PROJECT_DIR/deploy/certs/server.key
-        Certificate     : $PROJECT_DIR/deploy/certs/server.crt
-   b. Hosts -> Proxy Hosts -> Add Proxy Host
+1) NPM UI (http://$IPX:81)
+$SSL_STEP
+   Hosts -> Proxy Hosts -> Add Proxy Host
         Domain Names    : $DOMAIN
         Scheme/Host/Port: http / facerec_nginx / 80
         Block Common Exploits: ON
-        SSL tab         : sertifikat custom di atas, Force SSL ON, HTTP/2 ON
+        SSL tab         : $SSL_TAB
         Advanced        : client_max_body_size 8m; proxy_buffering off; proxy_read_timeout 120s;
 
 2) Migrasi customsik (manual, setelah membaca hasil face_check_db di atas):
@@ -267,10 +287,10 @@ cat <<EOF
      $COMPOSE_STR run --rm web manage createsuperuser
    Petugas loket login dengan akun Khanza (hak Registrasi).
 
-4) DNS: $DOMAIN -> ${SERVER_IP:-<IP-server>} (DNS internal/router), atau pakai -HostsIp di PC loket.
+$DNS_STEP
 
 5) PC loket Windows: salin $PROJECT_DIR/deploy/windows/out/ lalu (PowerShell Administrator):
-     .\\setup-loket.ps1 -ServerUrl https://$DOMAIN -HostsIp ${SERVER_IP:-<IP-server>} -Station loket-1
+     $PC_CMD
 
 Log: $COMPOSE_STR logs -f web vision nginx
 EOF

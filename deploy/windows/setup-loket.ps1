@@ -5,7 +5,8 @@
     powershell -ExecutionPolicy Bypass -File .\setup-loket.ps1 -ServerUrl https://192.168.1.20:8443 -Station loket-1
 
   Yang dilakukan:
-    1. Memasang CA internal (simrs-ca.crt) ke "Trusted Root Certification Authorities" komputer,
+    1. Memasang CA internal (simrs-ca.crt) ke "Trusted Root Certification Authorities" komputer
+       (lewati dengan -NoCa bila memakai domain publik + Let's Encrypt),
        sehingga https://server tidak memunculkan peringatan sertifikat.
     2. Kebijakan Edge & Chrome: izinkan kamera untuk ServerUrl tanpa prompt (VideoCaptureAllowedUrls).
     3. Membuat shortcut desktop "SIMRS Identifikasi Wajah" (mode aplikasi; opsional mode kiosk).
@@ -17,6 +18,8 @@ param(
   [string]$Station = "loket-1",
   # Bila nama domain (mis. facerec.rs.local) belum ada di DNS internal: IP server untuk file hosts.
   [string]$HostsIp = "",
+  # Domain publik dengan sertifikat Let's Encrypt (mis. https://face.rsiyatofa.co.id): CA internal tidak perlu.
+  [switch]$NoCa,
   [switch]$Kiosk
 )
 $ErrorActionPreference = "Stop"
@@ -41,10 +44,15 @@ if ($HostsIp) {
 }
 if ($Station -notmatch '^[A-Za-z0-9_.\-]{1,40}$') { throw "Nama stasiun hanya huruf/angka/titik/garis bawah/tanda hubung." }
 
-# 1. CA internal
-if (-not (Test-Path $CaFile)) { throw "File CA tidak ditemukan: $CaFile" }
-Write-Host "==> Memasang CA internal ke LocalMachine\Root"
-Import-Certificate -FilePath $CaFile -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+# 1. CA internal (dilewati untuk domain publik bersertifikat Let's Encrypt)
+if ($NoCa) {
+  Write-Host "==> -NoCa: CA internal tidak dipasang (sertifikat publik, mis. Let's Encrypt)"
+} elseif (Test-Path $CaFile) {
+  Write-Host "==> Memasang CA internal ke LocalMachine\Root"
+  Import-Certificate -FilePath $CaFile -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+} else {
+  throw "File CA tidak ditemukan: $CaFile. Untuk domain publik bersertifikat Let's Encrypt tambahkan -NoCa."
+}
 
 # 2. Kebijakan kamera untuk Edge & Chrome
 function Add-AllowedUrl([string]$keyPath, [string]$url) {
