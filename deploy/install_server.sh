@@ -10,7 +10,7 @@
 #
 # Jawaban bisa diberikan lewat variabel (mode non-interaktif / otomatis):
 #   INSTALL_DOMAIN INSTALL_SERVER_IP INSTALL_DB_HOST INSTALL_DB_PORT INSTALL_DB_USER INSTALL_DB_PASSWORD
-#   INSTALL_RO_USER INSTALL_RO_PASSWORD INSTALL_RW_USER INSTALL_RW_PASSWORD INSTALL_EMBEDDING_KEYS
+#   INSTALL_KHANZA_DB INSTALL_RO_USER INSTALL_RO_PASSWORD INSTALL_RW_USER INSTALL_RW_PASSWORD INSTALL_EMBEDDING_KEYS
 #   NPM_CONTAINER (paksa nama container NPM)  INSTALL_YES=1 (tanpa konfirmasi)
 #   INSTALL_SKIP_KHANZA_CHECK=1 (TIDAK disarankan; hanya untuk uji)
 set -euo pipefail
@@ -95,6 +95,8 @@ else
   ask INSTALL_DB_HOST "IP/host database server B (customsik & yatofaasli)" ""
   [ -n "$INSTALL_DB_HOST" ] || die "host database wajib diisi"
   ask INSTALL_DB_PORT "Port database" "3306"
+  ask INSTALL_KHANZA_DB "Nama database SIMRS Khanza (tabel pasien, reg_periksa, dst.)" "sik"
+  [[ "$INSTALL_KHANZA_DB" =~ ^[A-Za-z0-9_]+$ ]] || die "nama database Khanza tidak valid: $INSTALL_KHANZA_DB"
   ask INSTALL_DB_USER "User database customsik" "sik"
   ask_secret INSTALL_DB_PASSWORD "Password database customsik"
   ask INSTALL_RO_USER "User untuk membaca data Khanza (Enter = pakai user yang sama)" "$INSTALL_DB_USER"
@@ -122,7 +124,7 @@ else
   fi
   CPUS="$(nproc)"; VISION_CPUS=$(( CPUS / 2 > 0 ? CPUS / 2 : 1 ))
   export INSTALL_DOMAIN INSTALL_SERVER_IP INSTALL_DB_HOST INSTALL_DB_PORT INSTALL_DB_USER INSTALL_DB_PASSWORD \
-         INSTALL_RO_USER INSTALL_RO_PASSWORD INSTALL_RW_USER INSTALL_RW_PASSWORD INSTALL_EMBEDDING_KEYS \
+         INSTALL_KHANZA_DB INSTALL_RO_USER INSTALL_RO_PASSWORD INSTALL_RW_USER INSTALL_RW_PASSWORD INSTALL_EMBEDDING_KEYS \
          INSTALL_ALLOW_PRIVILEGED \
          VISION_CPUS NPM_NETWORK_DETECTED
   umask 077
@@ -149,6 +151,7 @@ values = {
     "FACE_EMBEDDING_KEYS": e.get("INSTALL_EMBEDDING_KEYS") or base64.urlsafe_b64encode(os.urandom(32)).decode(),
     "FACE_WORKER_SECRET": secrets.token_urlsafe(32),
     "FACE_DEFAULT_CAMERA": "usb", "GUNICORN_WORKERS": "2", "VISION_CPUS": e["VISION_CPUS"],
+    "KHANZA_DB_NAME": e["INSTALL_KHANZA_DB"],
     "KHANZA_DB_HOST": e["INSTALL_DB_HOST"], "KHANZA_DB_PORT": e["INSTALL_DB_PORT"],
     "KHANZA_DB_USER": e["INSTALL_RO_USER"], "KHANZA_DB_PASSWORD": literal(e["INSTALL_RO_PASSWORD"]),
     "KHANZA_ALLOW_PRIVILEGED_USER": e["INSTALL_ALLOW_PRIVILEGED"],
@@ -214,7 +217,7 @@ EOF
 fi
 if [ "$(envval KHANZA_ENABLED)" = "true" ] && [ "${INSTALL_SKIP_KHANZA_CHECK:-0}" != "1" ]; then
   "${COMPOSE[@]}" run --rm --no-deps web manage face_khanza_check \
-    || die "pemeriksaan Khanza gagal (user harus baca-saja dan bisa login dari IP server ini). Lihat pesan di atas."
+    || die "pemeriksaan Khanza gagal. Cek di .env.production: KHANZA_DB_NAME (nama database Khanza, saat ini '$(envval KHANZA_DB_NAME)'), KHANZA_DB_USER/PASSWORD, dan KHANZA_ALLOW_PRIVILEGED_USER=true bila memakai akun berhak tulis (mis. sik). Lihat pesan di atas, perbaiki, lalu jalankan ulang."
 fi
 
 # ---------------------------------------------------------------- 7. sertifikat

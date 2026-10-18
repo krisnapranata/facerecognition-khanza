@@ -1,7 +1,7 @@
 # Langkah Deploy di Server (mulai dari clone)
 
 Skenario: server aplikasi (Docker + **Nginx Proxy Manager** di port 80/443) dan database `customsik` &
-`yatofaasli` di **server database lain** dalam satu LAN, memakai akun MySQL **`sik`** yang sudah ada.
+database SIMRS Khanza (nama default `sik`) di **server database lain** dalam satu LAN, memakai akun MySQL **`sik`** yang sudah ada.
 
 Ganti contoh berikut dengan nilai Anda:
 
@@ -39,7 +39,7 @@ docker ps --format '{{.Names}} {{.Image}}' | grep nginx-proxy-manager   # NPM te
 Uji koneksi ke database dari server aplikasi (opsional, butuh klien mysql):
 
 ```bash
-mysql -h IP_DB -u sik -p yatofaasli -e "SELECT COUNT(*) FROM pasien"
+mysql -h IP_DB -u sik -p sik -e "SELECT COUNT(*) FROM pasien"
 ```
 
 ## 2. Clone kode
@@ -80,6 +80,7 @@ Jawab pertanyaannya:
 | IP server ini | `IP_APP` (biasanya sudah terisi) |
 | IP/host database server B | `IP_DB` |
 | Port database | Enter (`3306`) |
+| Nama database SIMRS Khanza | Enter (`sik`) — sesuaikan bila nama database Khanza Anda berbeda |
 | User database customsik | `sik` |
 | Password database customsik | password `sik` (tidak tampil saat diketik) |
 | User untuk membaca data Khanza | **Enter** (pakai `sik`, password dipakai ulang) |
@@ -219,6 +220,7 @@ fr run --rm web manage face_check_db     # bila ada migrasi baru, jalankan migra
 | `container Nginx Proxy Manager tidak ditemukan` | NPM belum jalan, atau pakai mode port sendiri (`docs/DEPLOY_PRODUCTION.md` bagian 4) |
 | Gagal "Menguji koneksi ke database" | Langkah 0: host `sik`, firewall 3306, `bind-address` MariaDB |
 | `face_khanza_check`: hak tulis | `.env.production` harus berisi `KHANZA_ALLOW_PRIVILEGED_USER=true` saat memakai `sik` |
+| `Unknown database 'yatofaasli'` | Nama database Khanza salah: `sed -i 's/^KHANZA_DB_NAME=.*/KHANZA_DB_NAME=sik/' .env.production` lalu jalankan ulang skrip |
 | NPM: 502 Bad Gateway | Forward Hostname harus `facerec_nginx`; cek `fr ps` |
 | Peringatan sertifikat di browser | Jalankan ulang `setup-loket.ps1` sebagai Administrator; tutup semua jendela browser |
 | Login 403 (CSRF) | Domain di NPM harus sama dengan `CSRF_TRUSTED_ORIGINS` di `.env.production`; lalu `fr up -d` |
