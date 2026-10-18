@@ -117,28 +117,45 @@
     if (blob && S.active) {
       const form = new FormData();
       form.append("frame", blob, "frame.jpg");
-      const res = await FaceCommon.api(`${S.cfg.stationFrameBase}${encodeURIComponent(S.station)}/frame/`, { method: "POST", body: form });
+      const res = await FaceCommon.api(`${S.cfg.stationFrameBase}${encodeURIComponent(S.station)}/frame/`,
+        { method: "POST", body: form, timeout: 8000 });
       S.latency = Math.round(performance.now() - t0);
       if (res.ok) {
         S.faces = res.data.faces;
         S.error = "";
+        S.failures = 0;
         S.sent += 1;
         const secs = (performance.now() - S.fpsStarted) / 1000;
         if (secs >= 2) { S.fps = S.sent / secs; S.sent = 0; S.fpsStarted = performance.now(); }
+      } else if (res.error.code === "UNAUTHENTICATED") {
+        stop(); setStatus("Sesi login berakhir, silakan login ulang."); return;
+      } else if (isTransient(res.error.code)) {
+        // Gangguan sesaat (jaringan/timeout/server sibuk): coba ulang diam-diam, tampilkan pesan
+        // hanya bila berulang, agar petugas tidak terganggu oleh satu frame yang gagal.
+        S.failures = (S.failures || 0) + 1;
+        S.totalFailures = (S.totalFailures || 0) + 1;
+        S.lastFailure = res.error.code;
+        if (S.failures >= 2) S.faces = [];
+        S.error = S.failures >= 3 ? `Koneksi ke server terganggu (${res.error.message}) — mencoba ulang…` : "";
       } else {
         S.faces = [];
         S.error = res.error.message;
-        if (res.error.code === "UNAUTHENTICATED") { stop(); setStatus("Sesi login berakhir, silakan login ulang."); return; }
       }
       draw();
     }
     const interval = 1000 / Math.max(0.5, S.cfg.stationMaxFps || 4);
-    const wait = res_wait(interval - (performance.now() - t0));
-    S.timer = setTimeout(loop, wait);
+    S.timer = setTimeout(loop, nextWait(interval - (performance.now() - t0)));
   }
 
-  // Saat error (mis. server sibuk), perlambat pengiriman ke 1 frame/detik.
-  function res_wait(ms) { return Math.max(S.error ? 1000 : 0, ms); }
+  function isTransient(code) {
+    return code === "NETWORK" || code === "TIMEOUT" || code === "RATE_LIMITED" || /^HTTP_5\d\d$/.test(code);
+  }
+
+  // Saat gagal berulang, mundur bertahap (0,5 s → 1 → 2 → 4 → maks 5 s); error lain: 1 frame/detik.
+  function nextWait(ms) {
+    if (S.failures) return Math.max(ms, Math.min(5000, 500 * 2 ** (S.failures - 1)));
+    return Math.max(S.error ? 1000 : 0, ms);
+  }
 
   function draw() {
     const v = el.video, c = el.overlay;
@@ -228,6 +245,9 @@
     },
     get mode() { return S.mode; },
     get active() { return S.active; },
-    status() { return { active: S.active, fps: S.fps, latency: S.latency, faces: S.faces.length, error: S.error, station: S.station }; },
+    status() {
+      return { active: S.active, fps: S.fps, latency: S.latency, faces: S.faces.length, error: S.error, station: S.station,
+               totalFailures: S.totalFailures || 0, lastFailure: S.lastFailure || "" };
+    },
   };
 })();

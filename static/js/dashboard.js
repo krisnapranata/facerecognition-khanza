@@ -90,7 +90,9 @@
     else pill("st-camera", "Kamera USB: belum dimulai", "muted");
     pill("st-model", d.model.available ? "Model: tersedia di server" : "Model: file tidak ditemukan", d.model.available ? "ok" : "danger");
     pill("st-faces", "Wajah terdeteksi: " + (s.active ? s.faces : "–"), s.active && s.faces ? "info" : "muted");
-    pill("st-fps", s.active ? `Kirim ${s.fps.toFixed(1)} fps · ${s.latency} ms` : "Kirim: – fps", "muted");
+    const fails = s.totalFailures ? ` · gagal ${s.totalFailures} (${s.lastFailure})` : "";
+    pill("st-fps", s.active ? `Kirim ${s.fps.toFixed(1)} fps · ${s.latency} ms${fails}` : "Kirim: – fps",
+      s.totalFailures ? "danger" : "muted");
   }
 
   if (window.FaceUSB) {

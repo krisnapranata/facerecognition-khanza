@@ -44,6 +44,36 @@ sec "Uji HTTP dari jaringan $NPM_NET"
 [ -n "$NPM_NET" ] && docker run --rm --network "$NPM_NET" nginx:1.27-alpine \
   wget -qS -O /dev/null --header "Host: $DOMAIN" http://facerec_nginx/accounts/login/ 2>&1 | grep -m1 HTTP/
 
+sec "Stabilitas container (restart / OOM / mulai)"
+for c in facerec_web facerec_vision facerec_nginx; do
+  echo "$c: $(docker inspect "$c" --format 'restart={{.RestartCount}} oom={{.State.OOMKilled}} mulai={{.State.StartedAt}} exit={{.State.ExitCode}}' 2>&1)"
+done
+docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' facerec_web facerec_vision facerec_nginx 2>&1
+echo "Beban server: $(cut -d' ' -f1-3 /proc/loadavg) (load 1/5/15 menit), CPU: $(nproc), $(free -h | awk '/^Mem:/ {print "RAM terpakai "$3" dari "$2}')"
+(dmesg 2>/dev/null | grep -iE "out of memory|oom-kill" | tail -3) || true
+
+sec "Error vision/web 1 jam terakhir (timeout worker, exception, koneksi DB)"
+for c in facerec_vision facerec_web; do
+  echo "-- $c"
+  docker logs --since 1h "$c" 2>&1 | grep -iE "WORKER TIMEOUT|Booting worker|Traceback|Error|exception|killed|refused|gone away|Lost connection" \
+    | grep -v "onnxruntime" | tail -15
+done
+echo "-- jumlah request frame stasiun 10 menit terakhir: $(docker logs --since 10m facerec_vision 2>&1 | grep -c 'stations/')"
+echo "-- kode status frame stasiun 10 menit terakhir:"
+docker logs --since 10m facerec_vision 2>&1 | grep 'stations/' | grep -oE '" [0-9]{3} ' | sort | uniq -c
+
+if [ -n "$NPM" ] && [ -n "$DOMAIN" ]; then
+  sec "Log error NPM untuk $DOMAIN"
+  PH="$(docker exec "$NPM" sh -c "grep -l 'server_name.*$DOMAIN' /data/nginx/proxy_host/*.conf 2>/dev/null | head -1")"
+  if [ -n "$PH" ]; then
+    ID="$(basename "$PH" .conf)"
+    echo "Proxy host #$ID"
+    docker exec "$NPM" sh -c "tail -n 15 /data/logs/proxy-host-${ID}_error.log 2>/dev/null || echo '(log error kosong)'"
+  else
+    echo "(proxy host untuk $DOMAIN tidak ditemukan di NPM)"
+  fi
+fi
+
 sec "Log web (20 baris)"
 docker logs --tail 20 facerec_web 2>&1
 sec "Log nginx aplikasi (10 baris)"

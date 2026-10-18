@@ -15,16 +15,29 @@
       opts.body = JSON.stringify(opts.json);
       delete opts.json;
     }
+    // Batas waktu agar permintaan yang menggantung tidak menghentikan antrean (default 15 detik).
+    const timeoutMs = opts.timeout || 15000;
+    delete opts.timeout;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    opts.signal = ctrl.signal;
     let resp;
     try {
       resp = await fetch(url, opts);
     } catch (e) {
-      return { ok: false, error: { code: "NETWORK", message: "Server tidak dapat dihubungi" } };
+      clearTimeout(timer);
+      if (e.name === "AbortError") {
+        return { ok: false, error: { code: "TIMEOUT", message: `Server tidak merespons dalam ${Math.round(timeoutMs / 1000)} detik` } };
+      }
+      console.warn("Permintaan gagal:", url, e);
+      return { ok: false, error: { code: "NETWORK", message: "Server tidak dapat dihubungi", detail: String(e) } };
     }
     try {
       return await resp.json();
     } catch (e) {
       return { ok: false, error: { code: "HTTP_" + resp.status, message: "Respons tidak valid (HTTP " + resp.status + ")" } };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
