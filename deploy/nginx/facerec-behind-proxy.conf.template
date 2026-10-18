@@ -28,7 +28,7 @@ server {
 
     # Frame kamera USB -> container vision.
     location /api/face/v1/stations/ {
-        set $upstream_vision http://vision:8001;
+        set $upstream_vision http://facerec_vision:8001;
         proxy_pass $upstream_vision;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -38,7 +38,7 @@ server {
     }
 
     location = /stream/ {
-        set $upstream_web http://web:8000;
+        set $upstream_web http://facerec_web:8000;
         proxy_pass $upstream_web;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
@@ -47,7 +47,7 @@ server {
     }
 
     location / {
-        set $upstream_web http://web:8000;
+        set $upstream_web http://facerec_web:8000;
         proxy_pass $upstream_web;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

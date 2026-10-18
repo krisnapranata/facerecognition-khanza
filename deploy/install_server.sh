@@ -151,7 +151,7 @@ def literal(v):
 values = {
     "APP_MODE": "production", "DJANGO_DEBUG": "false",
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(50),
-    "DJANGO_ALLOWED_HOSTS": f"{e['INSTALL_DOMAIN']},{e['INSTALL_SERVER_IP']},web,localhost",
+    "DJANGO_ALLOWED_HOSTS": f"{e['INSTALL_DOMAIN']},{e['INSTALL_SERVER_IP']},facerec_web,localhost",
     "CSRF_TRUSTED_ORIGINS": f"https://{e['INSTALL_DOMAIN']}",
     "BEHIND_TLS_PROXY": "true", "SESSION_COOKIE_SECURE": "true", "CSRF_COOKIE_SECURE": "true",
     "NPM_NETWORK": e["NPM_NETWORK_DETECTED"],
@@ -190,6 +190,11 @@ if [ "$NPM_NETWORK" != "$NPM_NETWORK_DETECTED" ]; then
   info "Memperbaiki NPM_NETWORK di $ENV_FILE: '$NPM_NETWORK' -> '$NPM_NETWORK_DETECTED'"
   sed -i "s/^NPM_NETWORK=.*/NPM_NETWORK=$NPM_NETWORK_DETECTED/" "$ENV_FILE"
   NPM_NETWORK="$NPM_NETWORK_DETECTED"
+fi
+# Nama host internal unik (bukan "web", yang bisa bentrok dengan aplikasi lain di jaringan NPM).
+if ! grep -qE '^DJANGO_ALLOWED_HOSTS=.*(^|[=,])facerec_web(,|$)' "$ENV_FILE"; then
+  info "Menambahkan facerec_web ke DJANGO_ALLOWED_HOSTS di $ENV_FILE"
+  sed -i 's/^DJANGO_ALLOWED_HOSTS=\(.*\)$/DJANGO_ALLOWED_HOSTS=\1,facerec_web/' "$ENV_FILE"
 fi
 
 # ---------------------------------------------------------------- 5. folder data

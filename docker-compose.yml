@@ -31,7 +31,7 @@ services:
     container_name: facerec_web
     command: ["web"]
     environment:
-      FACE_WORKER_URL: http://worker:8765
+      FACE_WORKER_URL: http://facerec_worker:8765
     expose: ["8000"]
 
   vision:
@@ -50,7 +50,7 @@ services:
     command: ["worker"]
     profiles: ["rtsp"]
     environment:
-      FACE_DJANGO_URL: http://web:8000
+      FACE_DJANGO_URL: http://facerec_web:8000
       WORKER_HTTP_HOST: 0.0.0.0   # hanya di jaringan internal Docker (tidak dipublikasikan)
     expose: ["8765"]
     depends_on: [web]

@@ -139,7 +139,7 @@ PC loket ──HTTPS 443──► NPM (proxy-npm-1, sertifikat) ──HTTP──
    ```
 2. Tentukan nama domain internal, mis. `facerec.rs.local`, lalu di `.env.production`:
    ```dotenv
-   DJANGO_ALLOWED_HOSTS=facerec.rs.local,web,localhost
+   DJANGO_ALLOWED_HOSTS=facerec.rs.local,facerec_web,localhost
    CSRF_TRUSTED_ORIGINS=https://facerec.rs.local
    BEHIND_TLS_PROXY=true
    ```
