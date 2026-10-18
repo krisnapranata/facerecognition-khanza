@@ -430,8 +430,19 @@
 
   refreshHealth();
   refreshEvents();
-  setInterval(refreshHealth, 2000);
+  // Jangan menumpuk permintaan di jaringan lambat: polling berikutnya menunggu yang sebelumnya selesai.
+  function guarded(fn) {
+    let busy = false;
+    return async () => {
+      if (busy) return;
+      busy = true;
+      try { await fn(); } finally { busy = false; }
+    };
+  }
+  const pollHealth = guarded(refreshHealth);
+  const pollEvents = guarded(refreshEvents);
+  setInterval(pollHealth, 2000);
   setInterval(() => {
-    if (!verifyModalEl.classList.contains("show") && !regModalEl.classList.contains("show")) refreshEvents();
+    if (!verifyModalEl.classList.contains("show") && !regModalEl.classList.contains("show")) pollEvents();
   }, 2500);
 })();

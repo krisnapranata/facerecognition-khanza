@@ -80,7 +80,8 @@
     S.active = true;
     S.error = "";
     S.sent = 0;
-    Object.assign(S, { inflight: 0, lastSend: 0, lastApplied: 0, latEma: 0, slow: false, failures: 0, retryAt: 0 });
+    Object.assign(S, { inflight: 0, lastSend: 0, lastApplied: 0, latEma: 0, tier: 0, failures: 0, retryAt: 0,
+                       fpsTarget: maxFps() });
     S.fpsStarted = performance.now();
     el.toggle.textContent = "Berhenti";
     el.toggle.classList.replace("btn-success", "btn-danger");
@@ -104,29 +105,43 @@
     if (S.mode === "usb") msg("Kamera USB berhenti. Klik Mulai untuk mengaktifkan.");
   }
 
-  // --- Pengiriman frame adaptif ----------------------------------------------------------------
-  // LAN (latensi rendah): 640 px, JPEG 0,82, satu frame dalam perjalanan.
-  // Koneksi jauh/lambat (mis. dari luar RS lewat internet): 480 px, JPEG 0,72 (±separuh data) dan
-  // sampai dua frame dalam perjalanan sekaligus, agar throughput tidak dibatasi waktu bolak-balik.
-  const SLOW_MS = 220, FAST_MS = 140;
+  // --- Pengiriman frame adaptif + kontrol kemacetan --------------------------------------------
+  // Tingkat kualitas menurut latensi rata-rata (dengan histeresis):
+  //   0 LAN        (< 220 ms) : 640 px, JPEG 0,82
+  //   1 jauh       (220-700)  : 480 px, JPEG 0,72 (±separuh data)
+  //   2 tersumbat  (> 700 ms) : 360 px, JPEG 0,60 (±seperempat data)
+  // Laju frame memakai AIMD seperti video call: naik perlahan saat lancar, turun cepat saat latensi
+  // tinggi/gagal, agar kiriman tidak menumpuk di jalur internet yang sempit (latensi berdetik-detik).
+  const TIERS = [{ w: 640, q: 0.82 }, { w: 480, q: 0.72 }, { w: 360, q: 0.6 }];
 
-  function isSlowLink() {
-    if (S.slow && S.latEma < FAST_MS) S.slow = false;
-    else if (!S.slow && S.latEma > SLOW_MS) S.slow = true;
-    return S.slow;
+  function tier() {
+    const l = S.latEma || 0;
+    if (S.tier === 0 && l > 220) S.tier = 1;
+    else if (S.tier === 1 && l > 700) S.tier = 2;
+    else if (S.tier === 2 && l < 450) S.tier = 1;
+    else if (S.tier === 1 && l < 140) S.tier = 0;
+    return S.tier || 0;
+  }
+
+  function maxFps() { return Math.max(0.5, S.cfg.stationMaxFps || 4); }
+
+  function adaptRate(ok, lat) {
+    if (!ok) S.fpsTarget = Math.max(0.5, S.fpsTarget * 0.5);           // gagal: turun drastis
+    else if (lat > 800) S.fpsTarget = Math.max(1, S.fpsTarget * 0.7);   // tersumbat: turun
+    else if (lat < 400) S.fpsTarget = Math.min(maxFps(), S.fpsTarget + 0.25);  // lancar: naik perlahan
   }
 
   function grabFrame() {
     const v = el.video;
     if (!v.videoWidth) return null;
-    const slow = isSlowLink();
-    const scale = Math.min(1, (slow ? 480 : MAX_WIDTH) / v.videoWidth);
+    const t = TIERS[tier()];
+    const scale = Math.min(1, Math.min(MAX_WIDTH, t.w) / v.videoWidth);
     // Kanvas baru per frame: aman saat dua frame diproses bersamaan.
     const c = document.createElement("canvas");
     c.width = Math.round(v.videoWidth * scale);
     c.height = Math.round(v.videoHeight * scale);
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-    return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", slow ? 0.72 : 0.82));
+    return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", t.q));
   }
 
   async function sendFrame() {
@@ -141,6 +156,7 @@
     const lat = performance.now() - t0;
     S.latency = Math.round(lat);
     S.latEma = S.latEma ? S.latEma * 0.8 + lat * 0.2 : lat;
+    adaptRate(res.ok, lat);
     if (res.ok) {
       // Abaikan jawaban yang datang lebih lambat dari jawaban frame yang lebih baru.
       if (t0 >= S.lastApplied) {
@@ -174,8 +190,10 @@
   function loop() {
     if (!S.active) return;
     const now = performance.now();
-    const interval = 1000 / Math.max(0.5, S.cfg.stationMaxFps || 4);
-    const maxInflight = isSlowLink() && !S.failures ? 2 : 1;
+    const interval = 1000 / Math.max(0.5, Math.min(maxFps(), S.fpsTarget || maxFps()));
+    // Dua frame dalam perjalanan hanya bila latensi karena JARAK (tingkat 1) dan tidak ada tanda
+    // kemacetan (laju masih dekat maksimum, tanpa gagal). Bila jalur sempit, kirim satu-satu.
+    const maxInflight = tier() === 1 && !S.failures && S.fpsTarget >= maxFps() * 0.75 ? 2 : 1;
     if (S.inflight < maxInflight && now - S.lastSend >= interval && now >= (S.retryAt || 0)) {
       S.inflight += 1;
       S.lastSend = now;
