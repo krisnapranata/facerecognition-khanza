@@ -1,0 +1,18 @@
+# Override: tambahan pintu HTTPS untuk akses LAN langsung lewat IP, mis. https://192.168.1.176:8020
+# Dipakai bersama mode NPM (domain publik tetap lewat Nginx Proxy Manager):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.lan.yml \
+#       --env-file .env.production up -d
+#
+# Aktifkan dengan: deploy/enable_lan_https.sh <IP-server> [port]
+
+services:
+  nginx:
+    ports:
+      - "${FACE_LAN_HTTPS_PORT:-8020}:8443"
+    environment:
+      FACE_LAN_HTTPS_PORT: ${FACE_LAN_HTTPS_PORT:-8020}
+    volumes:
+      - ./deploy/nginx/facerec-lan.conf.template:/etc/nginx/templates/lan.conf.template:ro
+      - ./deploy/nginx/facerec-locations.conf:/etc/nginx/snippets/facerec-locations.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro

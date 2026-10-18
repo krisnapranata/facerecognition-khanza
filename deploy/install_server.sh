@@ -182,6 +182,11 @@ PYEOF
 fi
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed "s/^'\(.*\)'$/\1/"; }
+# Pintu akses LAN (deploy/enable_lan_https.sh) tetap dipertahankan saat skrip ini diulang.
+if [ -n "$(envval FACE_LAN_HTTPS_PORT)" ]; then
+  COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.lan.yml --env-file "$ENV_FILE")
+  echo "Akses LAN HTTPS aktif (port $(envval FACE_LAN_HTTPS_PORT)) — docker-compose.lan.yml disertakan."
+fi
 DOMAIN="$(envval CSRF_TRUSTED_ORIGINS | sed 's#https://##; s#,.*##')"
 SERVER_IP="${INSTALL_SERVER_IP:-$(envval DJANGO_ALLOWED_HOSTS | tr ',' '\n' | grep -Em1 '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || true)}"
 NPM_NETWORK="$(envval NPM_NETWORK)"

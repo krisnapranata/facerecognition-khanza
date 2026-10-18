@@ -1,0 +1,28 @@
+# Pintu akses LAN langsung lewat IP: https://<IP-server>:${FACE_LAN_HTTPS_PORT}
+# Sertifikat dari CA internal (deploy/make_certs.sh --ip <IP-server>); PC loket memasang CA itu
+# (setup-loket.ps1 tanpa -NoCa). HTTPS wajib: browser hanya mengizinkan kamera USB di secure context.
+# Di dalam container mendengarkan 8443; docker-compose.lan.yml memetakan port host -> 8443.
+
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL_LAN:10m;
+    ssl_session_timeout 1h;
+
+    # Permintaan http:// ke port HTTPS -> arahkan ke https:// pada port yang sama.
+    error_page 497 =301 https://$host:${FACE_LAN_HTTPS_PORT}$request_uri;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header Permissions-Policy "camera=(self), microphone=()" always;
+
+    client_max_body_size 8m;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    include /etc/nginx/snippets/facerec-locations.conf;
+}

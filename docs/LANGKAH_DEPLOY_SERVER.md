@@ -169,6 +169,39 @@ Pakai sertifikat **Let's Encrypt** dari NPM (gratis, dipercaya semua browser, pe
 Saat `install_server.sh` menanyakan domain, isi `face.rsiyatofa.co.id`; ringkasan di akhir skrip otomatis
 menampilkan langkah Let's Encrypt.
 
+### 6c. Akses LAN langsung lewat IP (mis. `https://192.168.1.176:8020`)
+
+Selain domain publik, aplikasi bisa dibuka langsung lewat IP server di jaringan RS. Harus **HTTPS**
+(browser memblokir kamera USB di `http://` selain localhost), memakai sertifikat CA internal untuk IP.
+
+```bash
+cd /srv/simrs-face-recognition
+deploy/enable_lan_https.sh 192.168.1.176 8020
+```
+
+Skrip ini (aman diulang): menambah IP & `https://IP:PORT` ke `.env.production`, memastikan sertifikat
+CA internal memuat IP tsb (dibuat ulang bila perlu; CA lama tetap), membuka port 8020 di `facerec_nginx`
+(tanpa mengganggu NPM), lalu menguji `https://192.168.1.176:8020` → 200. `http://192.168.1.176:8020`
+otomatis dialihkan ke `https://`.
+
+Setelah itu **semua perintah compose wajib menyertakan `docker-compose.lan.yml`**:
+
+```bash
+alias fr='docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.lan.yml --env-file .env.production'
+```
+
+(`install_server.sh` mendeteksinya otomatis.) Bila ufw aktif:
+`sudo ufw allow from 192.168.0.0/16 to any port 8020 proto tcp`.
+
+PC loket yang memakai alamat IP — **tanpa `-NoCa`** (CA internal harus terpasang):
+
+```powershell
+.\setup-loket.ps1 -ServerUrl https://192.168.1.176:8020 -Station loket-1
+```
+
+PC yang sebelumnya disetup dengan `-NoCa` (domain publik) cukup menjalankan perintah di atas sekali lagi;
+kebijakan kamera untuk domain publik tetap ada.
+
 ## 7. DNS
 
 Pilih salah satu:
