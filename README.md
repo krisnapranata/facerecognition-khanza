@@ -221,7 +221,7 @@ uji memakai gambar noise dan vektor sintetis.
 
 Ringkas: aplikasi di Docker server A (`web` + `vision` + `nginx` TLS), database di server B, PC loket
 Windows memakai **kamera USB lewat browser** (Edge/Chrome, tanpa install) — frame dikirim ke server via
-HTTPS. Langkah lengkap: **`docs/DEPLOY_PRODUCTION.md`**.
+HTTPS. **Langkah cepat dari clone: `docs/LANGKAH_DEPLOY_SERVER.md`**; panduan lengkap: `docs/DEPLOY_PRODUCTION.md`.
 
 ```bash
 cp .env.production.example .env.production   # isi
