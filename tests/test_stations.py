@@ -43,7 +43,23 @@ class StationFrameTests(FaceTestCase):
         self.assertEqual(second["match_status"], "CANDIDATE")
         event = FaceRecognitionEvent.objects.get(pk=second["event_id"])
         self.assertEqual(event.camera_id, "usb-loket-1")
-        self.assertNotIn("UJI-0001", str(second))  # respons stasiun tidak memuat identitas
+        # Operator berizin melihat identitas: label "Nama (No. RM)" untuk overlay kamera.
+        self.assertEqual(second["identity"], "Pasien Uji Satu (UJI-0001)")
+
+    def test_identity_hidden_without_identity_permission(self):
+        from django.contrib.auth.models import Permission
+
+        make_reference("UJI-0001", vector=self.vec)
+        self.nobody.user_permissions.add(Permission.objects.get(codename="view_facerecognitionevent"))
+        self.client.force_login(self.nobody)
+        self.send()
+        station = stations.manager.get("loket-1")
+        station.min_track_age = 0
+        station.match_interval = 0
+        face = self.send().json()["data"]["faces"][0]
+        self.assertEqual(face["match_status"], "CANDIDATE")
+        self.assertIsNone(face["identity"])
+        self.assertNotIn("UJI-0001", str(face))
 
     def test_station_listed_in_health(self):
         self.client.force_login(self.operator)

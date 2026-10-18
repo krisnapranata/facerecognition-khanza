@@ -96,7 +96,7 @@ def station_frame(request, station_id: str):
     started = time.monotonic()
     station = stations.manager.get(station_id)
     try:
-        faces = station.process(image)
+        faces = station.process(image, show_identity=request.user.has_perm("face_registry.view_candidate_identity"))
     except ModelUnavailableError as exc:
         raise ApiError("MODEL_UNAVAILABLE", f"Model AI tidak tersedia: {exc}", 503)
     elapsed = (time.monotonic() - started) * 1000

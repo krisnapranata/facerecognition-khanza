@@ -158,7 +158,11 @@
       ctx.shadowBlur = 12;
       ctx.strokeRect(x * w, y * h, bw * w, bh * h);
       ctx.shadowBlur = 0;
-      const label = `T${String(f.track_id).split("-").pop()} ${status || "TRACKING"}`;
+      // Nama (No. RM) hanya dikirim server untuk pengguna berizin melihat identitas kandidat.
+      // NEEDS_REVIEW diberi "?" agar jelas masih perlu verifikasi petugas.
+      const label = f.identity
+        ? `${f.identity}${f.match_status === "NEEDS_REVIEW" ? " ?" : ""}`
+        : `T${String(f.track_id).split("-").pop()} ${status || "TRACKING"}`;
       const tw = ctx.measureText(label).width + 10;
       ctx.fillStyle = color;
       ctx.fillRect(x * w, Math.max(0, y * h - 20), tw, 20);

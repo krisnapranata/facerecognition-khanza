@@ -22,6 +22,7 @@ from ai_worker import quality as quality_mod
 from ai_worker.config import QualityConfig, WorkerConfig
 from ai_worker.embedding import MODEL_VERSION
 from ai_worker.tracker import IoUTracker, Track
+from ai_worker.worker import format_identity
 from apps.face_registry.engine import get_engine
 
 from . import services
@@ -52,7 +53,8 @@ class Station:
             self.fps = self._fps_count / (now - self._fps_started)
             self._fps_count, self._fps_started = 0, now
 
-    def process(self, image) -> list[dict]:
+    def process(self, image, show_identity: bool = False) -> list[dict]:
+        """``show_identity``: sertakan label "Nama (No. RM)" kandidat (hanya untuk pengguna berizin)."""
         engine = get_engine()
         now = time.monotonic()
         with self.lock:
@@ -75,6 +77,7 @@ class Station:
                     "quality": q.status,
                     "reasons": q.as_dict()["reason_labels"],
                     "match_status": track.match_status or None,
+                    "identity": track.identity if show_identity else None,
                     "event_id": track.event_id,
                 })
             return faces
@@ -97,6 +100,7 @@ class Station:
         })
         track.match_status = event.match_status
         track.event_id = event.pk
+        track.identity = format_identity(services.candidate_identity(event))
 
 
 class StationManager:
