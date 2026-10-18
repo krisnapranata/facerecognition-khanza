@@ -68,9 +68,18 @@ echo "Model AI: OK (checksum cocok)"
 info "Mendeteksi Nginx Proxy Manager"
 NPM_CONTAINER="${NPM_CONTAINER:-$(docker ps --format '{{.Names}} {{.Image}}' | awk '$2 ~ /nginx-proxy-manager/ {print $1; exit}')}"
 [ -n "$NPM_CONTAINER" ] || die "container Nginx Proxy Manager tidak ditemukan. Untuk server tanpa NPM pakai mode mandiri (docs/DEPLOY_PRODUCTION.md bagian 4)."
-NPM_NETWORK_DETECTED="$(docker inspect "$NPM_CONTAINER" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
-[ -n "$NPM_NETWORK_DETECTED" ] || die "jaringan Docker milik $NPM_CONTAINER tidak terbaca"
-echo "NPM: $NPM_CONTAINER, jaringan: $NPM_NETWORK_DETECTED"
+NPM_NETWORKS="$(docker inspect "$NPM_CONTAINER" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')"
+# Jaringan "bridge"/"host" bawaan Docker tidak punya DNS nama container -> NPM tidak bisa memanggil
+# facerec_nginx. Pilih jaringan buatan pengguna (mis. proxy_default).
+NPM_NETWORK_DETECTED="${NPM_NETWORK_OVERRIDE:-$(for n in $NPM_NETWORKS; do case "$n" in bridge|host|none) ;; *) echo "$n"; break;; esac; done)}"
+if [ -z "$NPM_NETWORK_DETECTED" ]; then
+  die "$NPM_CONTAINER hanya terhubung ke jaringan bawaan ($NPM_NETWORKS) yang tidak mendukung nama container.
+Buat jaringan khusus lalu sambungkan NPM (tanpa restart, aplikasi lain tidak terganggu):
+    docker network create npm_proxy
+    docker network connect npm_proxy $NPM_CONTAINER
+lalu jalankan ulang skrip ini (atau: NPM_NETWORK_OVERRIDE=npm_proxy deploy/install_server.sh)."
+fi
+echo "NPM: $NPM_CONTAINER, jaringan: $NPM_NETWORKS-> dipakai: $NPM_NETWORK_DETECTED"
 
 # ---------------------------------------------------------------- 3. bentrok nama container
 info "Memeriksa nama container"
@@ -92,7 +101,7 @@ else
   ask INSTALL_DOMAIN "Nama domain aplikasi (dibuka PC loket)" "facerec.rs.local"
   ask INSTALL_SERVER_IP "IP server ini (server A)" "$DEFAULT_IP"
   valid_ip "$INSTALL_SERVER_IP" || die "IP server tidak valid: $INSTALL_SERVER_IP"
-  ask INSTALL_DB_HOST "IP/host database server B (customsik & yatofaasli)" ""
+  ask INSTALL_DB_HOST "IP/host server database (customsik & database Khanza)" ""
   [ -n "$INSTALL_DB_HOST" ] || die "host database wajib diisi"
   ask INSTALL_DB_PORT "Port database" "3306"
   ask INSTALL_KHANZA_DB "Nama database SIMRS Khanza (tabel pasien, reg_periksa, dst.)" "sik"
@@ -176,7 +185,12 @@ envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed "s/^'\(.*\)'$/\1/"; }
 DOMAIN="$(envval CSRF_TRUSTED_ORIGINS | sed 's#https://##; s#,.*##')"
 SERVER_IP="${INSTALL_SERVER_IP:-$(envval DJANGO_ALLOWED_HOSTS | tr ',' '\n' | grep -Em1 '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || true)}"
 NPM_NETWORK="$(envval NPM_NETWORK)"
-[ "$NPM_NETWORK" = "$NPM_NETWORK_DETECTED" ] || warn "NPM_NETWORK di $ENV_FILE ($NPM_NETWORK) berbeda dengan jaringan NPM terdeteksi ($NPM_NETWORK_DETECTED)"
+if [ "$NPM_NETWORK" != "$NPM_NETWORK_DETECTED" ]; then
+  # Mis. instalasi sebelumnya sempat memilih jaringan "bridge" bawaan: perbaiki otomatis.
+  info "Memperbaiki NPM_NETWORK di $ENV_FILE: '$NPM_NETWORK' -> '$NPM_NETWORK_DETECTED'"
+  sed -i "s/^NPM_NETWORK=.*/NPM_NETWORK=$NPM_NETWORK_DETECTED/" "$ENV_FILE"
+  NPM_NETWORK="$NPM_NETWORK_DETECTED"
+fi
 
 # ---------------------------------------------------------------- 5. folder data
 info "Menyiapkan folder data (milik uid 1000 = user di container)"
@@ -242,7 +256,19 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-[ "$ok" = "1" ] || die "facerec_nginx belum merespons dari jaringan NPM. Cek: ${COMPOSE[*]} logs web nginx"
+if [ "$ok" != "1" ]; then
+  echo "== Diagnostik ==" >&2
+  "${COMPOSE[@]}" ps -a >&2 || true
+  echo "-- jaringan facerec_nginx: $(docker inspect facerec_nginx --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null)" >&2
+  echo "-- uji HTTP dari jaringan $NPM_NETWORK:" >&2
+  docker run --rm --network "$NPM_NETWORK" nginx:1.27-alpine \
+    wget -S -O /dev/null --header "Host: $DOMAIN" http://facerec_nginx/accounts/login/ 2>&1 | tail -5 >&2 || true
+  echo "-- log web (40 baris terakhir):" >&2
+  "${COMPOSE[@]}" logs --tail 40 web >&2 || true
+  echo "-- log nginx (15 baris terakhir):" >&2
+  "${COMPOSE[@]}" logs --tail 15 nginx >&2 || true
+  die "facerec_nginx belum merespons dari jaringan NPM ($NPM_NETWORK). Kirim diagnostik di atas untuk analisis."
+fi
 "${COMPOSE[@]}" ps
 
 # ---------------------------------------------------------------- 9. ringkasan
