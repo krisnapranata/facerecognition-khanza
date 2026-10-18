@@ -241,7 +241,7 @@ Di dashboard pilih **Kamera server / RTSP**. URL/password RTSP tidak pernah diki
 | Tugas | Perintah |
 |---|---|
 | Log | `docker compose --env-file .env.production logs -f web vision nginx` |
-| Update aplikasi | salin kode baru → `docker compose --env-file .env.production up -d --build` → jalankan `face_check_db` bila ada migrasi |
+| Update aplikasi | `git pull` → `docker compose … up -d --build` → `docker compose … up -d --force-recreate --no-deps nginx` (nginx membaca template hanya saat start) → jalankan `face_check_db` bila ada migrasi |
 | Retensi biometrik (cron harian) | `docker compose --env-file .env.production run --rm web manage face_purge_expired` |
 | Perbarui sertifikat (IP berubah / habis) | `deploy/make_certs.sh --ip …` → `docker compose restart nginx` (CA tetap, PC loket tidak perlu diubah) |
 | Cadangan | `data/var/` (SQLite user/sesi), `data/media_private/` (terenkripsi), `.env.production` & `deploy/certs/ca.key` (simpan terpisah, aman) |

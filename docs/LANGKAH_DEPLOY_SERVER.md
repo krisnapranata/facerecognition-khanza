@@ -209,6 +209,7 @@ Di PC loket: `https://facerec.rs.local` terbuka **tanpa peringatan sertifikat**,
 cd /srv/simrs-face-recognition
 git pull
 fr up -d --build
+fr up -d --force-recreate --no-deps nginx   # nginx membaca template konfigurasi hanya saat start
 fr run --rm web manage face_check_db     # bila ada migrasi baru, jalankan migrate seperti langkah 5
 ```
 
@@ -221,6 +222,7 @@ fr run --rm web manage face_check_db     # bila ada migrasi baru, jalankan migra
 | Gagal "Menguji koneksi ke database" | Langkah 0: host `sik`, firewall 3306, `bind-address` MariaDB |
 | `face_khanza_check`: hak tulis | `.env.production` harus berisi `KHANZA_ALLOW_PRIVILEGED_USER=true` saat memakai `sik` |
 | `Unknown database 'yatofaasli'` | Nama database Khanza salah: `sed -i 's/^KHANZA_DB_NAME=.*/KHANZA_DB_NAME=sik/' .env.production` lalu jalankan ulang skrip |
+| NPM/uji: 502, log nginx `upstream ... 172.x.x.x:8000` refused | nginx masih konfigurasi lama: `docker restart facerec_nginx` |
 | NPM: 502 Bad Gateway | Forward Hostname harus `facerec_nginx`; cek `fr ps` |
 | Peringatan sertifikat di browser | Jalankan ulang `setup-loket.ps1` sebagai Administrator; tutup semua jendela browser |
 | Login 403 (CSRF) | Domain di NPM harus sama dengan `CSRF_TRUSTED_ORIGINS` di `.env.production`; lalu `fr up -d` |

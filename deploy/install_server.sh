@@ -252,6 +252,9 @@ fi
 # ---------------------------------------------------------------- 8. jalankan
 info "Menjalankan container (tanpa port publik; masuk jaringan $NPM_NETWORK)"
 "${COMPOSE[@]}" up -d
+# nginx merender template hanya saat start; compose tidak me-restart bila hanya isi file template
+# yang berubah (mis. setelah git pull), jadi selalu buat ulang nginx agar konfigurasi terbaru dipakai.
+"${COMPOSE[@]}" up -d --force-recreate --no-deps nginx
 echo "Menunggu aplikasi siap..."
 ok=0
 for _ in $(seq 1 30); do
