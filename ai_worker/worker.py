@@ -174,7 +174,8 @@ class FaceWorker:
             track.last_quality = {"status": q.status, "score": q.score, "reasons": q.reasons}
             if q.ok and self.embedder is not None and q.score > track.best_score:
                 track.best_score = q.score
-                track.best_aligned = self.embedder.align(frame, track.detection)
+                lit = quality_mod.correct_lighting(frame, track.detection)  # cerahkan wajah redup
+                track.best_aligned = self.embedder.align(lit, track.detection)
             self._maybe_submit(track, now)
         return visible
 

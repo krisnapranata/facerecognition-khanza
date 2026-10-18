@@ -198,7 +198,7 @@ def register_reference(request, data: dict) -> PatientFaceReference:
     from ai_worker.detector import Detection
 
     det = Detection.from_row(np.asarray(entry["detection"], dtype=np.float32))
-    vector = engine.embedder.embed(image, det)
+    vector = engine.embedder.embed(quality.correct_lighting(image, det), det)
     ciphertext = crypto.encrypt_embedding(vector, MODEL_VERSION)
     ok, crop_jpeg = cv2.imencode(".jpg", _face_crop(image, det.bbox), [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     if not ok:

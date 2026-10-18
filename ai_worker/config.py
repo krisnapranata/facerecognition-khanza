@@ -49,7 +49,7 @@ def resolve_path(value: str) -> Path:
 class QualityConfig:
     min_face_size: int = 64
     min_blur_variance: float = 40.0
-    min_brightness: float = 50.0
+    min_brightness: float = 30.0  # hanya tolak yang benar-benar gelap; redup dikoreksi (correct_lighting)
     max_brightness: float = 210.0
     max_roll_degrees: float = 25.0
     max_yaw_ratio: float = 0.35

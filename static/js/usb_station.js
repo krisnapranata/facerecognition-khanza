@@ -288,6 +288,8 @@
       t.status = f.match_status;
       t.quality = f.quality;
       t.reasons = f.reasons;
+      t.sharpness = f.sharpness;
+      t.brightness = f.brightness;
       t.identity = f.identity;
       if (gray && gw) t.tmpl = sampleInto(t.box, 0, 0, t.tmpl || new Float32Array(GRID * GRID));
     });
@@ -331,7 +333,8 @@
       ctx.fillText(label, x * w + 5, Math.max(14, y * h - 6));
       if (f.quality === "POOR" && f.reasons && f.reasons.length) {
         ctx.fillStyle = "rgba(11,16,38,.75)";
-        const r = f.reasons[0];
+        // Tampilkan angka agar ambang bisa dikalibrasi di lokasi (tajam = ketajaman, terang = kecerahan).
+        const r = `${f.reasons[0]} · tajam ${f.sharpness ?? "?"} · terang ${f.brightness ?? "?"}`;
         const rw = ctx.measureText(r).width + 10;
         ctx.fillRect(x * w, (y + bh) * h, rw, 18);
         ctx.fillStyle = "#fed7aa";

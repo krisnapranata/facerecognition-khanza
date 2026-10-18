@@ -15,6 +15,11 @@ import numpy as np
 from .config import QualityConfig
 from .detector import Detection
 
+REF_CONTRAST = 40.0   # kontras (std abu-abu) acuan untuk normalisasi ketajaman
+MIN_CONTRAST = 4.0    # di bawah ini wajah dianggap tanpa detail (buram/gelap total)
+LIGHT_TARGET = 115.0  # kecerahan tujuan koreksi cahaya
+LIGHT_CORRECT_BELOW = 90.0  # hanya wajah lebih redup dari ini yang dikoreksi
+
 GOOD = "GOOD"
 POOR = "POOR"
 
@@ -79,8 +84,13 @@ def assess(frame: np.ndarray, det: Detection, cfg: QualityConfig | None = None) 
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     # Normalisasi ukuran agar ukuran wajah tidak memengaruhi ukuran ketajaman.
     norm = cv2.resize(gray, (112, 112), interpolation=cv2.INTER_AREA) if gray.size > 1 else gray
-    blur = float(cv2.Laplacian(norm, cv2.CV_64F).var()) if norm.size > 1 else 0.0
+    raw_blur = float(cv2.Laplacian(norm, cv2.CV_64F).var()) if norm.size > 1 else 0.0
     brightness = float(norm.mean()) if norm.size else 0.0
+    # Laplacian variance sebanding dengan kontras^2: wajah tajam yang redup ikut bernilai rendah
+    # (terukur: cahaya separuh -> 85 menjadi 22). Normalkan ke kontras acuan agar yang dinilai
+    # benar-benar ketajaman; wajah tanpa detail (std sangat kecil) tetap dianggap buram.
+    contrast = float(norm.std()) if norm.size > 1 else 0.0
+    blur = 0.0 if contrast < MIN_CONTRAST else min(raw_blur * (REF_CONTRAST / contrast) ** 2, 10000.0)
     if blur < cfg.min_blur_variance:
         reasons.append("BLURRY")
     if brightness < cfg.min_brightness:
@@ -119,9 +129,32 @@ def assess(frame: np.ndarray, det: Detection, cfg: QualityConfig | None = None) 
         metrics={
             "face_size": face_size,
             "blur_variance": blur,
+            "blur_variance_raw": raw_blur,
+            "contrast": contrast,
             "brightness": brightness,
             "roll_degrees": roll,
             "yaw_ratio": yaw_ratio,
             "detection_score": float(det.score),
         },
     )
+
+
+def correct_lighting(frame: np.ndarray, det: Detection) -> np.ndarray:
+    """Cerahkan frame dengan koreksi gamma bila wajah redup, untuk embedding yang lebih stabil.
+
+    Wajah yang sudah cukup terang (>= LIGHT_CORRECT_BELOW) dikembalikan apa adanya, sehingga
+    referensi yang didaftarkan di tempat terang tidak berubah. Dipakai identik di stasiun kamera
+    USB, AI worker, dan registrasi.
+    """
+    crop = _crop(frame, det.bbox)
+    if crop.size <= 3:
+        return frame
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    mean = float(gray.mean())
+    if mean >= LIGHT_CORRECT_BELOW or mean < 1.0:
+        return frame
+    # gamma sehingga kecerahan rata-rata wajah ~LIGHT_TARGET; dibatasi agar derau tidak berlebihan.
+    gamma = math.log(LIGHT_TARGET / 255.0) / math.log(mean / 255.0)
+    gamma = max(0.35, min(1.0, gamma))
+    lut = np.clip(((np.arange(256) / 255.0) ** gamma) * 255.0, 0, 255).astype(np.uint8)
+    return cv2.LUT(frame, lut)

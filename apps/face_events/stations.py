@@ -72,7 +72,8 @@ class Station:
                 track.last_quality = {"status": q.status, "score": q.score, "reasons": q.reasons}
                 if q.ok and q.score > track.best_score:
                     track.best_score = q.score
-                    track.best_aligned = engine.embedder.align(image, track.detection)
+                    lit = quality_mod.correct_lighting(image, track.detection)  # cerahkan wajah redup
+                    track.best_aligned = engine.embedder.align(lit, track.detection)
                 self._maybe_match(track, now, engine)
                 x, y, bw, bh = track.bbox
                 faces.append({
@@ -80,6 +81,9 @@ class Station:
                     "bbox": [round(x / w, 4), round(y / h, 4), round(bw / w, 4), round(bh / h, 4)],
                     "quality": q.status,
                     "reasons": q.as_dict()["reason_labels"],
+                    # Untuk kalibrasi ambang di lokasi (FACE_MIN_BLUR_VARIANCE / FACE_MIN_BRIGHTNESS).
+                    "sharpness": round(q.metrics["blur_variance"]),
+                    "brightness": round(q.metrics["brightness"]),
                     "match_status": track.match_status or None,
                     "identity": track.identity if show_identity else None,
                     "event_id": track.event_id,

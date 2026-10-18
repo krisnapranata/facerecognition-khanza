@@ -287,3 +287,49 @@ class WorkerPipelineTests(SimpleTestCase):
             FaceDetector("/tidak/ada.onnx")
         with self.assertRaises(ModelUnavailableError):
             FaceEmbedder("/tidak/ada.onnx")
+
+
+class LightingQualityTests(SimpleTestCase):
+    """Wajah redup tapi tajam tidak boleh dinilai buram; yang redup dicerahkan sebelum embedding."""
+
+    def setUp(self):
+        import cv2
+
+        rng = np.random.RandomState(0)
+        base = cv2.GaussianBlur((rng.rand(480, 640) * 255).astype(np.float32), (0, 0), 1.5)
+        self.base = cv2.normalize(base, None, 60, 190, cv2.NORM_MINMAX)
+        self.det = fake_detection()
+
+    def frame(self, gain):
+        g = np.clip(self.base * gain, 0, 255).astype(np.uint8)
+        return np.dstack([g, g, g])
+
+    def test_dim_but_sharp_is_not_blurry(self):
+        normal = quality.assess(self.frame(1.0), self.det)
+        dim = quality.assess(self.frame(0.45), self.det)
+        self.assertNotIn("BLURRY", normal.reasons)
+        self.assertNotIn("BLURRY", dim.reasons)        # dulu: ketajaman 85 -> 22 = "buram"
+        self.assertNotIn("TOO_DARK", dim.reasons)      # kecerahan ±55 >= 30
+        self.assertAlmostEqual(dim.metrics["blur_variance"], normal.metrics["blur_variance"],
+                               delta=normal.metrics["blur_variance"] * 0.25)
+
+    def test_really_dark_still_rejected(self):
+        self.assertIn("TOO_DARK", quality.assess(self.frame(0.15), self.det).reasons)
+
+    def test_truly_blurry_still_rejected(self):
+        import cv2
+
+        blurred = cv2.GaussianBlur(self.frame(1.0), (0, 0), 6)
+        self.assertIn("BLURRY", quality.assess(blurred, self.det).reasons)
+
+    def test_correct_lighting(self):
+        import cv2
+
+        dim = self.frame(0.45)
+        out = quality.correct_lighting(dim, self.det)
+        x, y, w, h = (int(v) for v in self.det.bbox)
+        before = cv2.cvtColor(dim[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY).mean()
+        after = cv2.cvtColor(out[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY).mean()
+        self.assertGreater(after, before + 25)
+        bright = self.frame(1.0)
+        self.assertIs(quality.correct_lighting(bright, self.det), bright)  # wajah terang tidak diubah
