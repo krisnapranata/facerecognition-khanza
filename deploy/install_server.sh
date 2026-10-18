@@ -208,6 +208,8 @@ if [ "$(stat -c %u data/var)" != "1000" ] || [ "$(stat -c %u data/media_private)
   fi
 fi
 chmod 700 data/media_private
+# nginx (uid 101 di container) harus bisa membaca file static: jangan ikut umask host yang ketat.
+chmod 755 data/static 2>/dev/null || sudo chmod 755 data/static
 
 # ---------------------------------------------------------------- 6. build & uji koneksi server B
 info "Membangun image aplikasi"

@@ -21,6 +21,8 @@ case "$role" in
   web)
     umask 0022
     python manage.py collectstatic --noinput >/dev/null
+    # File static dibaca nginx (user lain, uid 101): folder 755, file 644, apa pun umask host.
+    chmod -R u=rwX,go=rX "$STATIC_ROOT" 2>/dev/null || echo "PERINGATAN: gagal chmod $STATIC_ROOT (CSS/JS bisa 403)" >&2
     umask 0077
     # Hanya database lokal aplikasi (SQLite: user, sesi). customsik dimigrasi manual.
     python manage.py migrate --database=default --noinput

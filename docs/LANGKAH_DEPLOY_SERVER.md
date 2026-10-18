@@ -223,6 +223,7 @@ fr run --rm web manage face_check_db     # bila ada migrasi baru, jalankan migra
 | `face_khanza_check`: hak tulis | `.env.production` harus berisi `KHANZA_ALLOW_PRIVILEGED_USER=true` saat memakai `sik` |
 | `Unknown database 'yatofaasli'` | Nama database Khanza salah: `sed -i 's/^KHANZA_DB_NAME=.*/KHANZA_DB_NAME=sik/' .env.production` lalu jalankan ulang skrip |
 | NPM/uji: 502, log nginx `upstream ... 172.x.x.x:8000` refused | nginx masih konfigurasi lama: `docker restart facerec_nginx` |
+| Halaman tampil polos tanpa CSS (CSS/JS 403/404) | `sudo chmod -R a+rX data/static && docker restart facerec_nginx` (versi baru memperbaiki otomatis saat `web` start) |
 | NPM: 502 Bad Gateway | Forward Hostname harus `facerec_nginx`; cek `fr ps` |
 | Peringatan sertifikat di browser | Jalankan ulang `setup-loket.ps1` sebagai Administrator; tutup semua jendela browser |
 | Login 403 (CSRF) | Domain di NPM harus sama dengan `CSRF_TRUSTED_ORIGINS` di `.env.production`; lalu `fr up -d` |
