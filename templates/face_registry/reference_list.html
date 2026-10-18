@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Referensi Wajah{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <h1 class="h4 mb-0 me-auto">Referensi wajah terdaftar</h1>
+  <div class="btn-group btn-group-sm">
+    <a class="btn btn-outline-secondary {% if not status %}active{% endif %}" href="?">Semua</a>
+    <a class="btn btn-outline-secondary {% if status == 'active' %}active{% endif %}" href="?status=active">Aktif</a>
+    <a class="btn btn-outline-secondary {% if status == 'inactive' %}active{% endif %}" href="?status=inactive">Nonaktif</a>
+  </div>
+  <a class="btn btn-primary btn-sm" href="{% url 'dashboard:registration' %}">Registrasi baru</a>
+</div>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead><tr><th>#</th><th>Foto</th><th>Nama</th><th>No. RM</th><th>Status</th><th>Dasar</th><th>Model</th>
+        <th>Didaftarkan</th><th>Kedaluwarsa</th><th></th></tr></thead>
+      <tbody>
+      {% for r in references %}
+        <tr id="ref-{{ r.pk }}">
+          <td>{{ r.pk }}</td>
+          <td><img class="ref-thumb" loading="lazy" src="{% url 'dashboard:reference-photo' r.pk %}" alt="foto referensi"></td>
+          <td>{{ r.patient_name }} {% if r.is_test_data %}<span class="badge text-bg-light">uji</span>{% endif %}</td>
+          <td>{{ r.no_rkm_medis }}</td>
+          <td>{% if r.is_active %}<span class="badge text-bg-success">aktif</span>{% else %}<span class="badge text-bg-secondary">nonaktif</span>{% endif %}</td>
+          <td class="small">{{ r.get_processing_basis_display }}</td>
+          <td class="small text-secondary">{{ r.model_version }}</td>
+          <td class="small">{{ r.created_at|date:"d/m/Y H:i" }}<br><span class="text-secondary">{{ r.registered_by }}</span></td>
+          <td class="small">{{ r.expires_at|date:"d/m/Y"|default:"–" }}</td>
+          <td class="text-nowrap">
+            {% if r.is_active %}<button class="btn btn-outline-warning btn-sm" data-action="deactivate" data-id="{{ r.pk }}">Nonaktifkan</button>{% endif %}
+            <button class="btn btn-outline-danger btn-sm" data-action="delete" data-id="{{ r.pk }}">Hapus</button>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10" class="text-center text-secondary py-4">Belum ada referensi.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="small text-secondary mt-2">Hapus = menghapus permanen embedding dan file foto (riwayat kejadian tetap ada tanpa tautan identitas).
+  Nonaktifkan = referensi tidak dipakai untuk pencocokan. Semua tindakan tercatat di audit log.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-action]");
+  if (!b) return;
+  const id = b.dataset.id, mode = b.dataset.action;
+  const text = mode === "delete"
+    ? "Hapus PERMANEN referensi #" + id + " beserta foto dan embedding?"
+    : "Nonaktifkan referensi #" + id + "?";
+  if (!confirm(text)) return;
+  const res = await FaceCommon.api(`/api/face/v1/references/${id}/?mode=${mode}`, { method: "DELETE" });
+  if (!res.ok) { alert(res.error.message); return; }
+  location.reload();
+});
+</script>
+{% endblock %}

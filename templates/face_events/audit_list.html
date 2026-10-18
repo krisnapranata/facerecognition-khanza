@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Audit log</h1>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Waktu</th><th>Aktor</th><th>Aksi</th><th>Target</th><th>Hasil</th><th>Detail</th><th>IP</th></tr></thead>
+      <tbody>
+      {% for a in page %}
+        <tr class="small">
+          <td>{{ a.timestamp|date:"d/m/Y H:i:s" }}</td><td>{{ a.actor }}</td><td>{{ a.action }}</td>
+          <td>{{ a.target_type }} {{ a.target_id }}</td>
+          <td><span class="badge text-bg-{% if a.outcome == 'SUCCESS' %}success{% else %}danger{% endif %}">{{ a.outcome }}</span></td>
+          <td>{{ a.detail }}</td><td>{{ a.ip_address }}</td>
+        </tr>
+      {% empty %}<tr><td colspan="7" class="text-center text-secondary py-4">Belum ada catatan.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% if page.has_other_pages %}
+<nav class="mt-3"><ul class="pagination pagination-sm">
+  {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page.previous_page_number }}">«</a></li>{% endif %}
+  <li class="page-item disabled"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+  {% if page.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page.next_page_number }}">»</a></li>{% endif %}
+</ul></nav>
+{% endif %}
+{% endblock %}

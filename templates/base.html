@@ -1,0 +1,57 @@
+{% load static %}<!doctype html>
+<html lang="id" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Identifikasi Wajah{% endblock %} · SIMRS</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/glass.css' %}">
+</head>
+<body class="glass-body">
+<div class="glass-orbs" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+{% if user.is_authenticated %}
+<nav class="navbar navbar-expand-lg glass-nav sticky-top">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-semibold d-flex align-items-center gap-2" href="{% url 'dashboard:index' %}">
+      <span class="brand-mark">◉</span><span>SIMRS <span class="brand-sub">· Identifikasi Wajah</span></span></a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-label="Menu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav me-auto">
+        {% if face_perms.can_view_events %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:index' %}">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:events' %}">Riwayat</a></li>
+        {% endif %}
+        {% if face_perms.can_manage_reference %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:registration' %}">Registrasi</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:references' %}">Referensi</a></li>
+        {% endif %}
+        {% if face_perms.can_view_audit %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:audit' %}">Audit</a></li>
+        {% endif %}
+      </ul>
+      <span class="user-chip me-3"><span class="user-dot"></span>{% if user.first_name %}{{ user.first_name }}{% else %}{{ user.get_username }}{% endif %}</span>
+      <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
+        <button class="btn btn-danger btn-sm">Keluar</button>
+      </form>
+    </div>
+  </div>
+</nav>
+{% endif %}
+{% if DEMO_MODE %}
+<div class="demo-ribbon small text-center">
+  MODE DEMO · {% if KHANZA_ENABLED %}data pasien dari Khanza (baca-saja){% else %}data uji sintetis · tidak terhubung ke Khanza{% endif %}
+  · anti-spoofing/liveness <strong>belum tersedia</strong>
+</div>
+{% endif %}
+<main class="container-fluid py-3">
+  {% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/common.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

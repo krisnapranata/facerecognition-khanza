@@ -1,0 +1,60 @@
+# nginx internal SIMRS Face Recognition saat berada DI BELAKANG Nginx Proxy Manager (NPM).
+# TLS/sertifikat ditangani NPM (port 443). Container ini tidak mempublikasikan port; NPM
+# meneruskan ke http://facerec_nginx:80 melalui jaringan Docker NPM (docker-compose.npm.yml).
+
+server {
+    listen 80;
+    server_name _;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header Permissions-Policy "camera=(self), microphone=()" always;
+
+    client_max_body_size 8m;
+
+    # Hanya percayai X-Forwarded-* dari jaringan Docker (NPM), bukan dari klien.
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 192.168.0.0/16;
+    real_ip_header X-Forwarded-For;
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location /static/ {
+        root /;
+        add_header Cache-Control "no-cache";
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    # Frame kamera USB -> container vision.
+    location /api/face/v1/stations/ {
+        set $upstream_vision http://vision:8001;
+        proxy_pass $upstream_vision;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 30s;
+    }
+
+    location = /stream/ {
+        set $upstream_web http://web:8000;
+        proxy_pass $upstream_web;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+
+    location / {
+        set $upstream_web http://web:8000;
+        proxy_pass $upstream_web;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # NPM selalu melayani HTTPS ke browser; Django membutuhkan ini untuk cookie Secure & CSRF.
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 120s;
+    }
+}

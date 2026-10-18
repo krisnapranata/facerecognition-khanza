@@ -1,0 +1,23 @@
+# Override: database yatofaasli/customsik berada di container MySQL milik casemixiDRG
+# (casemixidrg-db-1, service "db") di server yang SAMA dan tidak dipublikasikan ke LAN.
+# Container web/vision/worker ikut disambungkan ke jaringan compose casemix sehingga host "db" dikenali.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.casemixdb.yml \
+#       --env-file .env.production up -d --build
+#
+# Nama jaringan casemix: docker inspect casemixidrg-db-1 --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+# lalu isi CASEMIX_NETWORK di .env.production (default: casemixidrg_default).
+# Di .env.production: DB_HOST=db, KHANZA_DB_HOST=db (dan KHANZA_RW_DB_HOST bila diisi).
+
+services:
+  web:
+    networks: [default, casemix]
+  vision:
+    networks: [default, casemix]
+  worker:
+    networks: [default, casemix]
+
+networks:
+  casemix:
+    external: true
+    name: ${CASEMIX_NETWORK:-casemixidrg_default}

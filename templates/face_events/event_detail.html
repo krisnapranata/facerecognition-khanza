@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Kejadian #{{ e.id }}{% endblock %}
+{% block content %}
+<a href="{% url 'dashboard:events' %}" class="small">&larr; Riwayat</a>
+<h1 class="h4 my-2">Kejadian identifikasi #{{ e.id }}</h1>
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body">
+      <dl class="row mb-0 small">
+        <dt class="col-5">Kamera</dt><dd class="col-7">{{ e.camera_id }}</dd>
+        <dt class="col-5">ID track (sementara)</dt><dd class="col-7">{{ e.track_id }}</dd>
+        <dt class="col-5">Status pencocokan</dt><dd class="col-7">{{ e.match_status_label }}</dd>
+        <dt class="col-5">Catatan pencocokan</dt><dd class="col-7">{{ e.match_note|default:"–" }}</dd>
+        <dt class="col-5">Skor similarity</dt><dd class="col-7">{{ e.similarity|default_if_none:"–" }} (kandidat 2: {{ e.second_similarity|default_if_none:"–" }})<br>
+          <span class="text-secondary">cosine similarity, bukan persentase kepastian</span></dd>
+        <dt class="col-5">Kualitas</dt><dd class="col-7">{{ e.quality_status }}</dd>
+        <dt class="col-5">Jumlah pengiriman</dt><dd class="col-7">{{ e.submissions }}</dd>
+        <dt class="col-5">Dibuat / diperbarui</dt><dd class="col-7">{{ e.created_at|slice:":19"|cut:"T" }} / {{ e.updated_at|slice:":19"|cut:"T" }}</dd>
+      </dl>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body small">
+      <h2 class="h6">Kandidat (belum tentu benar)</h2>
+      {% if e.candidate %}
+        <p class="mb-2">{{ e.candidate.patient_name }} · No. RM {{ e.candidate.no_rkm_medis }}
+          {% if not e.candidate.reference_active %}<span class="badge text-bg-secondary">referensi nonaktif</span>{% endif %}</p>
+      {% else %}<p class="text-secondary">Tidak ditampilkan / tidak ada kandidat.</p>{% endif %}
+      <h2 class="h6 mt-3">Verifikasi petugas</h2>
+      <p class="mb-1">{{ e.verification_status_label }}{% if e.verified_by %} oleh {{ e.verified_by }} ({{ e.verified_at|slice:":19"|cut:"T" }}){% endif %}</p>
+      {% if e.verified_identity %}<p class="mb-1">Identitas terverifikasi: {{ e.verified_identity.patient_name }} · {{ e.verified_identity.no_rkm_medis }}</p>{% endif %}
+      {% if e.khanza_visit %}
+      <h2 class="h6 mt-3">Kunjungan Khanza</h2>
+      <p class="mb-1">No. Rawat {{ e.khanza_visit.no_rawat }} · No. Reg {{ e.khanza_visit.no_reg }}<br>
+        <span class="text-secondary">didaftarkan oleh {{ e.khanza_visit.registered_by }} ({{ e.khanza_visit.registered_at|slice:":19"|cut:"T" }})</span></p>
+      {% endif %}
+      <h2 class="h6 mt-3">Status kontrol</h2>
+      <p class="mb-0">{{ e.control_status_label }} — {{ e.control_detail|default:"–" }}</p>
+      {% if e.verification_status == 'PENDING' and face_perms.can_verify %}
+        <p class="mt-3 mb-0"><a class="btn btn-sm btn-primary" href="{% url 'dashboard:index' %}">Verifikasi dari dashboard</a></p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

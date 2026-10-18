@@ -1,0 +1,15 @@
+{
+  "_catatan": "CONTOH STRUKTUR SAJA. Ganti <...> dengan nama tabel/kolom yang SUDAH diverifikasi di database Khanza Anda.",
+  "patient_search": {
+    "sql": "SELECT <kolom_rm> AS no_rkm_medis, <kolom_nama> AS nama FROM <tabel_pasien> WHERE <kolom_nama> LIKE %(q)s OR <kolom_rm> LIKE %(q)s LIMIT %(limit)s",
+    "columns": {"no_rkm_medis": "no_rkm_medis", "nama": "nama"}
+  },
+  "patient_get": {
+    "sql": "SELECT <kolom_rm> AS no_rkm_medis, <kolom_nama> AS nama FROM <tabel_pasien> WHERE <kolom_rm> = %(no_rkm_medis)s LIMIT 1",
+    "columns": {"no_rkm_medis": "no_rkm_medis", "nama": "nama"}
+  },
+  "control_schedule": {
+    "sql": "SELECT <kolom_tanggal> AS tanggal, <kolom_poli> AS poli, <kolom_dokter> AS dokter FROM <tabel_jadwal_kontrol> WHERE <kolom_rm> = %(no_rkm_medis)s AND <kolom_tanggal> = %(tanggal)s LIMIT 20",
+    "columns": {"tanggal": "tanggal", "poli": "poli", "dokter": "dokter"}
+  }
+}

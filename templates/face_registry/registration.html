@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Registrasi Referensi Wajah{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+        <span class="me-auto">Kamera</span>
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="src" id="src-browser" value="browser" {% if default_camera == "usb" %}checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="src-browser">Kamera USB di PC ini</label>
+          <input type="radio" class="btn-check" name="src" id="src-worker" value="worker" {% if default_camera != "usb" %}checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="src-worker">Kamera server (worker)</label>
+        </div>
+      </div>
+      <div id="browser-device-row" class="px-3 py-2 border-bottom d-none">
+        <label class="form-label small mb-1" for="browser-device">Perangkat kamera</label>
+        <select class="form-select form-select-sm" id="browser-device"></select>
+      </div>
+      <div class="card-body p-0 capture-box position-relative">
+        <img id="live-worker" alt="Pratinjau kamera worker" class="w-100">
+        <video id="live-browser" class="w-100 d-none" autoplay playsinline muted></video>
+        <img id="captured" alt="Foto yang diambil" class="w-100 d-none">
+        <div id="cam-msg" class="video-msg d-none"></div>
+      </div>
+      <div class="card-footer d-flex flex-wrap gap-2">
+        <button class="btn btn-primary" id="btn-capture">Ambil Foto</button>
+        <button class="btn btn-outline-secondary" id="btn-retake" disabled>Ambil Ulang</button>
+        <span class="small text-secondary align-self-center">
+          Kamera USB di PC ini dibaca oleh browser (butuh HTTPS). Kamera server dibaca AI worker (webcam server / RTSP).
+          Satu kamera umumnya tidak bisa dibuka dua aplikasi sekaligus — tutup tab dashboard yang memakai kamera yang sama.
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header">{% if khanza_enabled %}Data pasien{% else %}Data pasien uji{% endif %}</div>
+      <div class="card-body">
+        {% if not model.available %}
+        <div class="alert alert-danger small">Model AI tidak tersedia ({{ model.detector_file }}/{{ model.embedding_file }}).
+          Registrasi tidak dapat dilakukan sampai model dipasang (lihat README).</div>
+        {% endif %}
+        <form id="reg-form" autocomplete="off" novalidate>
+          {% if khanza_enabled %}
+          <div class="mb-2">
+            <label class="form-label" for="no_rkm_medis">Nomor rekam medis (Khanza)</label>
+            <div class="input-group">
+              <input class="form-control" id="no_rkm_medis" maxlength="20" required>
+              <button class="btn btn-outline-secondary" type="button" id="btn-lookup">Cek di Khanza</button>
+              <div class="invalid-feedback" data-field="no_rkm_medis"></div>
+            </div>
+            <div class="form-text">Pastikan identitas pasien sudah dicocokkan dengan dokumen (KTP/kartu pasien) sebelum mendaftarkan wajah.</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="patient_name">Nama pasien (dari Khanza)</label>
+            <input class="form-control" id="patient_name" readonly placeholder="Klik 'Cek di Khanza'">
+            <div class="form-text" id="patient_info"></div>
+            <div class="invalid-feedback" data-field="patient_name"></div>
+          </div>
+          {% else %}
+          <div class="mb-2">
+            <label class="form-label" for="patient_name">Nama pasien uji</label>
+            <input class="form-control" id="patient_name" maxlength="100" required>
+            <div class="invalid-feedback" data-field="patient_name"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="no_rkm_medis">Nomor rekam medis uji</label>
+            <input class="form-control" id="no_rkm_medis" maxlength="20" placeholder="{% if DEMO_MODE %}UJI-0001{% endif %}" required>
+            <div class="form-text">{% if DEMO_MODE %}Mode demo: wajib berawalan <code>UJI-</code>. {% endif %}Nomor RM yang diketik bukan bukti identitas terverifikasi.</div>
+            <div class="invalid-feedback" data-field="no_rkm_medis"></div>
+          </div>
+          {% endif %}
+          <div class="mb-2">
+            <label class="form-label" for="processing_basis">Dasar pemrosesan</label>
+            <select class="form-select" id="processing_basis">
+              {% for value, label in bases %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+            <div class="invalid-feedback" data-field="processing_basis"></div>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="consent_confirmed">
+            <label class="form-check-label small" for="consent_confirmed">
+              Saya mengonfirmasi peserta uji telah menerima pemberitahuan dan memberikan persetujuan pemrosesan data biometrik,
+              dan tersedia alternatif identifikasi manual. Retensi: {{ retention_days }} hari.
+            </label>
+            <div class="invalid-feedback" data-field="consent_confirmed"></div>
+          </div>
+          <div class="mb-3">
+            <div class="small fw-semibold">Indikator kualitas foto</div>
+            <div id="quality" class="small text-secondary">Belum ada foto.</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success" id="btn-save" disabled>Simpan Referensi</button>
+            <button type="button" class="btn btn-outline-secondary" id="btn-cancel">Batal</button>
+          </div>
+          <div id="reg-result" class="mt-3"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.FACE_REG = {
+    streamUrl: "{% url 'dashboard:stream' %}",
+    captureUrl: "{% url 'api:captures' %}",
+    referencesUrl: "{% url 'api:references' %}",
+    listUrl: "{% url 'dashboard:references' %}",
+    searchUrl: "{% url 'patient-search' %}",
+    khanza: {{ khanza_enabled|yesno:"true,false" }},
+  };
+</script>
+<script src="{% static 'js/registration.js' %}"></script>
+{% endblock %}

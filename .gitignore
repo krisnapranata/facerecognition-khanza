@@ -1,0 +1,16 @@
+.venv/
+venv/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+media_private/
+*.sqlite3
+var/
+models/*.onnx
+*.log
+deploy/certs/
+deploy/windows/out/
+data/
+.env.production

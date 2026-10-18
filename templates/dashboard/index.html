@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span class="status-pill" id="st-worker">Worker: memeriksa…</span>
+      <span class="status-pill" id="st-camera">Kamera: memeriksa…</span>
+      <span class="status-pill" id="st-model">Model: memeriksa…</span>
+      <span class="status-pill" id="st-faces">Wajah terdeteksi: –</span>
+      <span class="status-pill" id="st-fps">Inferensi: – fps</span>
+      <span class="status-pill" id="st-khanza">Khanza: –</span>
+      <div class="ms-auto d-flex gap-2">
+        {% if face_perms.can_search_patient %}
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#searchModal">Cari Manual</button>
+        {% endif %}
+        {% if face_perms.can_manage_reference %}
+        <a class="btn btn-primary btn-sm" href="{% url 'dashboard:registration' %}">Buka Registrasi</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+        <span>Pratinjau kamera</span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Sumber kamera">
+          <input type="radio" class="btn-check" name="cam-src" id="cam-src-usb" value="usb">
+          <label class="btn btn-outline-secondary" for="cam-src-usb">Kamera USB di PC ini</label>
+          <input type="radio" class="btn-check" name="cam-src" id="cam-src-server" value="server">
+          <label class="btn btn-outline-secondary" for="cam-src-server">Kamera server / RTSP</label>
+        </div>
+      </div>
+      <div id="usb-controls" class="px-3 py-2 border-bottom d-none">
+        <div class="row g-2 align-items-end">
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="usb-device">Perangkat kamera</label>
+            <select class="form-select form-select-sm" id="usb-device"></select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small mb-1" for="usb-station">Nama stasiun / loket</label>
+            <input class="form-control form-control-sm" id="usb-station" maxlength="40" placeholder="loket-1">
+          </div>
+          <div class="col-sm-2 d-grid">
+            <button class="btn btn-success btn-sm" id="usb-toggle" type="button">Mulai</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body p-0 position-relative bg-black video-box">
+        <img id="video" alt="Stream kamera" class="w-100 d-none">
+        <video id="usb-video" class="w-100 d-none" autoplay playsinline muted></video>
+        <canvas id="usb-overlay" class="usb-overlay d-none"></canvas>
+        <div id="video-msg" class="video-msg">Menghubungkan ke AI worker…</div>
+      </div>
+      <div class="card-footer small text-secondary">
+        Ambang awal (wajib divalidasi lokal): kandidat ≥ {{ thresholds.candidate }}, review ≥ {{ thresholds.review }},
+        selisih kandidat 1–2 ≥ {{ thresholds.margin }}. Skor similarity <strong>bukan</strong> persentase kepastian identitas.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span>Kandidat terbaru</span>
+        <a class="small" href="{% url 'dashboard:events' %}">Riwayat lengkap</a>
+      </div>
+      <div class="card-body p-2 overflow-auto candidate-list" id="events">
+        <div class="text-secondary small p-2">Memuat…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal verifikasi -->
+<div class="modal fade" id="verifyModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Verifikasi kejadian #<span id="v-id"></span></h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div id="v-summary" class="mb-3"></div>
+      <div class="alert alert-info small">Cocokkan dengan dokumen identitas/pertanyaan verifikasi standar.
+        Sistem hanya memberi kandidat; keputusan ada pada petugas. Jangan menolak pelayanan karena sistem gagal mengenali wajah.</div>
+      <label class="form-label small">Catatan (opsional)</label>
+      <input class="form-control form-control-sm mb-3" id="v-note" maxlength="255">
+      <div class="mb-2 small fw-semibold">Identifikasi manual (jika kandidat salah/tidak ada)</div>
+      <div class="input-group input-group-sm mb-2">
+        <input class="form-control" id="v-manual-q" placeholder="Nama atau No. RM">
+        <button class="btn btn-outline-secondary" id="v-manual-search" type="button">Cari</button>
+      </div>
+      <div id="v-manual-results" class="list-group small"></div>
+      <div id="v-error" class="text-danger small mt-2"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline-danger" id="v-reject">Bukan orang ini</button>
+      <button class="btn btn-success" id="v-confirm">Konfirmasi kandidat</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Modal registrasi kunjungan ke Khanza (reg_periksa) -->
+<div class="modal fade" id="regModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content reg-modal">
+    <div class="modal-header reg-header border-0">
+      <div class="d-flex align-items-center gap-3 flex-grow-1">
+        <div class="reg-avatar" id="r-avatar">–</div>
+        <div>
+          <div class="small text-uppercase opacity-75">Daftarkan ke Poli</div>
+          <div class="h5 mb-0" id="r-patient-name">Memuat…</div>
+          <div class="small opacity-75" id="r-patient-rm"></div>
+        </div>
+        <div class="ms-auto text-end d-none d-md-block">
+          <div class="fw-semibold" id="r-date"></div>
+          <span class="badge rounded-pill text-bg-light" id="r-mode"></span>
+        </div>
+      </div>
+      <button type="button" class="btn-close btn-close-white ms-3" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body bg-body-tertiary">
+      <div id="r-suggest" class="mb-3"></div>
+      <div class="row g-3">
+        <div class="col-lg-4">
+          <div class="reg-step"><span class="reg-step-no">1</span> Poliklinik tujuan</div>
+          <div id="r-polies" class="d-grid gap-2"></div>
+        </div>
+        <div class="col-lg-8">
+          <div class="reg-step"><span class="reg-step-no">2</span> Dokter <span class="text-secondary fw-normal small" id="r-poli-name"></span></div>
+          <div id="r-doctors" class="row g-2"></div>
+        </div>
+      </div>
+      <div class="reg-step mt-3"><span class="reg-step-no">3</span> Konfirmasi</div>
+      <div id="r-preview"><div class="reg-empty">Pilih poliklinik dan dokter untuk melihat ringkasan pendaftaran.</div></div>
+      <div id="r-error" class="alert alert-danger py-2 small mt-2 d-none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Tutup</button>
+      <button class="btn btn-success btn-lg px-4" id="r-submit" disabled>Daftarkan</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Modal cari manual -->
+<div class="modal fade" id="searchModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Cari pasien {% if KHANZA_ENABLED %}(Khanza, baca-saja){% else %}(mode simulasi){% endif %}</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="input-group mb-3">
+        <input class="form-control" id="s-q" placeholder="Nama atau No. RM (min. 2 karakter)">
+        <button class="btn btn-primary" id="s-go">Cari</button>
+      </div>
+      <div id="s-results" class="list-group small"></div>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% load l10n %}
+<script>
+  window.FACE = {
+    streamUrl: "{% url 'dashboard:stream' %}",
+    healthUrl: "{% url 'api:health' %}",
+    eventsUrl: "{% url 'api:events' %}",
+    eventDetailBase: "{% url 'dashboard:events' %}",
+    searchUrl: "{% url 'patient-search' %}",
+    canVerify: {{ face_perms.can_verify|yesno:"true,false" }},
+    canManage: {{ face_perms.can_manage_reference|yesno:"true,false" }},
+    canRegister: {{ face_perms.can_register_visit|yesno:"true,false" }},
+    defaultCamera: "{{ default_camera }}",
+    stationFrameBase: "/api/face/v1/stations/",
+    stationMaxFps: {{ station_max_fps|unlocalize }},
+  };
+</script>
+{% load static %}<script src="{% static 'js/usb_station.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}

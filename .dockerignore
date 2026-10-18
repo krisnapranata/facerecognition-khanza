@@ -1,0 +1,17 @@
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+!.env.production.example
+__pycache__/
+*.py[cod]
+var/
+data/
+media_private/
+*.sqlite3
+*.log
+.git/
+.pytest_cache/
+deploy/certs/
+deploy/windows/out/

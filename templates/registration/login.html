@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-sm-8 col-md-5 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3">Masuk</h1>
+        <p class="text-secondary small">Identifikasi wajah pasien hanya untuk petugas berwenang.
+          {% if KHANZA_AUTH_ENABLED %}Gunakan ID user dan password SIMRS Khanza (wajib memiliki hak Registrasi).{% endif %}</p>
+        {% if form.errors %}<div class="alert alert-danger small">Username atau password salah.</div>{% endif %}
+        <form method="post">{% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="id_username">Username</label>
+            <input class="form-control" name="username" id="id_username" autocomplete="username" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_password">Password</label>
+            <input class="form-control" type="password" name="password" id="id_password" autocomplete="current-password" required>
+          </div>
+          <input type="hidden" name="next" value="{{ next }}">
+          <button class="btn btn-primary w-100">Masuk</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

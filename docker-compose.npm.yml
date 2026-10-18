@@ -1,0 +1,23 @@
+# Override: jalankan SIMRS Face Recognition DI BELAKANG Nginx Proxy Manager (NPM) yang sudah ada
+# di server (container proxy-npm-1, port 80/443). Tidak ada port yang dipublikasikan; NPM
+# meneruskan https://facerec.<domain>/ ke http://facerec_nginx:80 lewat jaringan Docker NPM.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.npm.yml --env-file .env.production up -d --build
+#
+# Nama jaringan NPM: docker inspect proxy-npm-1 --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+# lalu isi NPM_NETWORK di .env.production (default: proxy_default).
+
+services:
+  nginx:
+    ports: !reset []
+    environment:
+      FACE_HTTPS_PORT: "443"
+    volumes: !override
+      - ./deploy/nginx/facerec-behind-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./data/static:/static:ro
+    networks: [default, npm]
+
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK:-proxy_default}

@@ -1,0 +1,71 @@
+# SIMRS Face Recognition — server A (aplikasi). Database (customsik & Khanza) ada di server B.
+#
+#   PC loket Windows (Chrome/Edge + kamera USB)
+#        │  HTTPS :8443  (frame JPEG ±4 fps, hanya saat stasiun aktif)
+#        ▼
+#   nginx ──► web     (halaman, API, registrasi)          ──┐
+#        └──► vision  (/api/face/v1/stations/: deteksi,    ├──► MariaDB server B (DB_HOST)
+#                      tracking, embedding, pencocokan)   ──┘
+#   worker (opsional, profile "rtsp"): IP camera RTSP pintu masuk ──► web
+#
+# Pemakaian: lihat docs/DEPLOY_PRODUCTION.md
+#   docker compose --env-file .env.production up -d --build
+#   docker compose --env-file .env.production --profile rtsp up -d     # + IP camera RTSP
+
+x-app: &app
+  build: .
+  image: simrs-face-recognition:latest
+  env_file: .env.production
+  restart: unless-stopped
+  volumes:
+    - ./data/var:/data/var                      # SQLite lokal (user/sesi) + cache bersama web/vision
+    - ./data/media_private:/data/media_private  # foto referensi terenkripsi (JANGAN disajikan nginx)
+    - ./data/static:/data/static
+    - ./models:/app/models:ro
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  web:
+    <<: *app
+    container_name: facerec_web
+    command: ["web"]
+    environment:
+      FACE_WORKER_URL: http://worker:8765
+    expose: ["8000"]
+
+  vision:
+    <<: *app
+    container_name: facerec_vision
+    command: ["vision"]
+    expose: ["8001"]
+    deploy:
+      resources:
+        limits:
+          cpus: "${VISION_CPUS:-4}"
+
+  worker:
+    <<: *app
+    container_name: facerec_worker
+    command: ["worker"]
+    profiles: ["rtsp"]
+    environment:
+      FACE_DJANGO_URL: http://web:8000
+      WORKER_HTTP_HOST: 0.0.0.0   # hanya di jaringan internal Docker (tidak dipublikasikan)
+    expose: ["8765"]
+    depends_on: [web]
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: facerec_nginx
+    restart: unless-stopped
+    ports:
+      - "${FACE_HTTPS_PORT:-8443}:443"
+      - "${FACE_HTTP_PORT:-8088}:80"
+    environment:
+      FACE_HTTPS_PORT: ${FACE_HTTPS_PORT:-8443}
+    volumes:
+      - ./deploy/nginx/facerec.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - ./data/static:/static:ro
+    depends_on: [web, vision]

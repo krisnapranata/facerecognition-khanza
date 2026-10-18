@@ -1,0 +1,15 @@
+{
+  "_catatan": "Query baca-saja untuk database Khanza 'yatofaasli'. Skema diverifikasi 2026-10-18 via information_schema (lihat docs/KHANZA_INTEGRATION.md). Parameter: %(nama)s.",
+  "patient_search": {
+    "sql": "SELECT p.no_rkm_medis AS no_rkm_medis, p.nm_pasien AS nama, p.jk AS jk, p.tgl_lahir AS tgl_lahir FROM pasien p WHERE p.no_rkm_medis = %(exact)s OR p.nm_pasien LIKE %(q)s ORDER BY (p.no_rkm_medis = %(exact)s) DESC, p.nm_pasien LIMIT %(limit)s",
+    "columns": {"no_rkm_medis": "no_rkm_medis", "nama": "nama", "jk": "jk", "tgl_lahir": "tgl_lahir"}
+  },
+  "patient_get": {
+    "sql": "SELECT p.no_rkm_medis AS no_rkm_medis, p.nm_pasien AS nama, p.jk AS jk, p.tgl_lahir AS tgl_lahir FROM pasien p WHERE p.no_rkm_medis = %(no_rkm_medis)s LIMIT 1",
+    "columns": {"no_rkm_medis": "no_rkm_medis", "nama": "nama", "jk": "jk", "tgl_lahir": "tgl_lahir"}
+  },
+  "control_schedule": {
+    "sql": "SELECT 'booking_registrasi' AS sumber, b.tanggal_periksa AS tanggal, pl.nm_poli AS poli, d.nm_dokter AS dokter, b.status AS keterangan FROM booking_registrasi b LEFT JOIN poliklinik pl ON pl.kd_poli = b.kd_poli LEFT JOIN dokter d ON d.kd_dokter = b.kd_dokter WHERE b.no_rkm_medis = %(no_rkm_medis)s AND b.tanggal_periksa = %(tanggal)s AND b.status IN ('Terdaftar', 'Belum') UNION ALL SELECT 'surat_kontrol_bpjs', k.tgl_rencana, k.nm_poli_bpjs, k.nm_dokter_bpjs, k.no_surat FROM bridging_surat_kontrol_bpjs k JOIN bridging_sep s ON s.no_sep = k.no_sep WHERE s.nomr = %(no_rkm_medis)s AND k.tgl_rencana = %(tanggal)s UNION ALL SELECT 'skdp_bpjs', DATE(sk.tanggal_datang), NULL, d2.nm_dokter, sk.status FROM skdp_bpjs sk LEFT JOIN dokter d2 ON d2.kd_dokter = sk.kd_dokter WHERE sk.no_rkm_medis = %(no_rkm_medis)s AND sk.tanggal_datang >= %(tanggal)s AND sk.tanggal_datang < DATE_ADD(%(tanggal)s, INTERVAL 1 DAY) AND sk.status <> 'Batal Periksa' LIMIT 20",
+    "columns": {"sumber": "sumber", "tanggal": "tanggal", "poli": "poli", "dokter": "dokter", "keterangan": "keterangan"}
+  }
+}

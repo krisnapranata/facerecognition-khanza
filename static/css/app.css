@@ -1,0 +1,59 @@
+.status-pill {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+}
+.status-ok { background: #d1e7dd; color: #0f5132; border-color: #a3cfbb; }
+.status-danger { background: #f8d7da; color: #842029; border-color: #f1aeb5; }
+.status-info { background: #cff4fc; color: #055160; border-color: #9eeaf9; }
+.status-muted { color: var(--bs-secondary-color); }
+.video-box { min-height: 360px; display: flex; align-items: center; justify-content: center; }
+.video-box img { display: block; }
+.video-msg { color: #ddd; padding: 2rem; text-align: center; }
+.candidate-list { max-height: 72vh; }
+.event-card { border-left-width: 4px !important; }
+.capture-box { background: #111; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+.capture-box img, .capture-box video { max-width: 100%; }
+.ref-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; }
+
+/* --- Modal registrasi kunjungan --- */
+.reg-header { background: linear-gradient(135deg, #0d6efd, #0a58ca); color: #fff; }
+.reg-avatar { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.2);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; }
+.reg-step { font-weight: 600; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+.reg-step-no { width: 24px; height: 24px; border-radius: 50%; background: #0d6efd; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .8rem; }
+.reg-empty { border: 2px dashed var(--bs-border-color); border-radius: .75rem; padding: 1rem;
+  text-align: center; color: var(--bs-secondary-color); background: var(--bs-body-bg); }
+.poli-card { text-align: left; border: 1px solid var(--bs-border-color); border-radius: .75rem;
+  padding: .6rem .8rem; background: var(--bs-body-bg); transition: all .15s; }
+.poli-card:hover:not(:disabled) { border-color: #0d6efd; box-shadow: 0 2px 8px rgba(13,110,253,.15); }
+.poli-card.active { border-color: #0d6efd; background: #e7f1ff; box-shadow: inset 4px 0 0 #0d6efd; }
+.poli-card:disabled { opacity: .55; }
+.doc-card { height: 100%; border: 1px solid var(--bs-border-color); border-radius: .75rem; padding: .75rem;
+  background: var(--bs-body-bg); text-align: left; width: 100%; transition: all .15s; }
+.doc-card:hover:not(:disabled) { border-color: #198754; box-shadow: 0 2px 8px rgba(25,135,84,.15); }
+.doc-card.active { border-color: #198754; background: #e9f7ef; box-shadow: inset 0 0 0 1px #198754; }
+.doc-card:disabled { opacity: .55; cursor: not-allowed; }
+.doc-hours { font-size: 1.05rem; font-weight: 700; color: #198754; }
+.doc-hours.off { color: var(--bs-secondary-color); font-weight: 500; font-size: .9rem; }
+.day-chips { display: flex; gap: 3px; flex-wrap: wrap; margin-top: .4rem; }
+.day-chip { font-size: .68rem; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--bs-border-color);
+  color: var(--bs-secondary-color); }
+.day-chip.on { background: #d1e7dd; border-color: #a3cfbb; color: #0f5132; }
+.day-chip.today { outline: 2px solid #0d6efd; outline-offset: 1px; }
+.reg-ticket { background: var(--bs-body-bg); border-radius: .75rem; border: 1px solid var(--bs-border-color);
+  overflow: hidden; }
+.reg-ticket-no { background: #198754; color: #fff; text-align: center; padding: 1rem; }
+.reg-ticket-no .num { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+.reg-ticket dl { margin: 0; }
+.reg-ticket dt { font-weight: 500; color: var(--bs-secondary-color); font-size: .8rem; }
+.reg-ticket dd { margin-bottom: .4rem; font-weight: 600; }
+
+/* Overlay kotak wajah untuk kamera USB (browser) */
+.usb-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.video-box video { display: block; }
