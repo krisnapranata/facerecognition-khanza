@@ -12,8 +12,10 @@
 
   const S = {
     mode: "server", active: false, stream: null, timer: null, inflight: false,
-    station: "", deviceId: "", fps: 0, latency: 0, faces: [], error: "", sent: 0, fpsStarted: 0,
+    station: "", deviceId: "", fps: 0, latency: 0, error: "", sent: 0, fpsStarted: 0,
     cfg: null, onMode: null,
+    tracks: new Map(),  // track_id -> kotak yang dilacak lokal (lihat "Pelacakan lokal")
+    raf: 0,
   };
   let el = {};
 
@@ -83,14 +85,16 @@
     el.toggle.classList.replace("btn-success", "btn-danger");
     await listDevices();
     loop();
+    S.raf = requestAnimationFrame(render);
   }
 
   function stop() {
     S.active = false;
     clearTimeout(S.timer);
+    cancelAnimationFrame(S.raf);
     if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
     S.stream = null;
-    S.faces = [];
+    S.tracks.clear();
     el.video.srcObject = null;
     el.video.classList.add("d-none");
     el.overlay.classList.add("d-none");
@@ -121,7 +125,7 @@
         { method: "POST", body: form, timeout: 8000 });
       S.latency = Math.round(performance.now() - t0);
       if (res.ok) {
-        S.faces = res.data.faces;
+        syncTracks(res.data.faces, t0);  // t0 = saat frame ini diambil (untuk kompensasi latensi)
         S.error = "";
         S.failures = 0;
         S.sent += 1;
@@ -135,13 +139,12 @@
         S.failures = (S.failures || 0) + 1;
         S.totalFailures = (S.totalFailures || 0) + 1;
         S.lastFailure = res.error.code;
-        if (S.failures >= 2) S.faces = [];
+        if (S.failures >= 2) S.tracks.clear();
         S.error = S.failures >= 3 ? `Koneksi ke server terganggu (${res.error.message}) — mencoba ulang…` : "";
       } else {
-        S.faces = [];
+        S.tracks.clear();
         S.error = res.error.message;
       }
-      draw();
     }
     const interval = 1000 / Math.max(0.5, S.cfg.stationMaxFps || 4);
     S.timer = setTimeout(loop, nextWait(interval - (performance.now() - t0)));
@@ -157,6 +160,147 @@
     return Math.max(S.error ? 1000 : 0, ms);
   }
 
+  // --- Pelacakan lokal di browser -------------------------------------------------------------
+  // Server memperbarui kotak ±6x/detik dan tiap jawaban terlambat ±50-150 ms. Agar kotak mengikuti
+  // gerakan wajah, browser menggeser kotak sendiri di setiap frame video (±30 fps) dengan template
+  // matching pada citra abu-abu kecil (192 px), lalu mengoreksinya dengan jawaban server yang
+  // dikompensasi gerakan selama jawaban itu "di perjalanan". Ringan, tanpa library, offline.
+  const TRACK_W = 192;    // lebar citra pelacakan (px)
+  const GRID = 16;        // titik sampel per sisi template (16x16)
+  const RADIUS = 8;       // jangkauan pencarian per frame (px pada citra pelacakan)
+  const MAX_SAD = 38;     // selisih rata-rata maksimum agar pergeseran dianggap valid
+  const tc = document.createElement("canvas");
+  const tctx = tc.getContext("2d", { willReadFrequently: true });
+  const probe = new Float32Array(GRID * GRID);
+  let gray = null, tmpGray = null, gw = 0, gh = 0;
+
+  function grabGray() {
+    const v = el.video;
+    if (!v.videoWidth || v.paused) return false;
+    gw = TRACK_W;
+    gh = Math.max(1, Math.round(v.videoHeight * TRACK_W / v.videoWidth));
+    if (tc.width !== gw || tc.height !== gh) { tc.width = gw; tc.height = gh; }
+    tctx.drawImage(v, 0, 0, gw, gh);
+    const d = tctx.getImageData(0, 0, gw, gh).data;
+    if (!gray || gray.length !== gw * gh) { gray = new Float32Array(gw * gh); tmpGray = new Float32Array(gw * gh); }
+    for (let i = 0, j = 0; i < gray.length; i++, j += 4) tmpGray[i] = d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114;
+    // Blur 3x3 (box, terpisah horizontal lalu vertikal): pencocokan lebih stabil terhadap derau kamera.
+    for (let y = 0; y < gh; y++) {
+      const o = y * gw;
+      for (let x = 0; x < gw; x++) {
+        const a = tmpGray[o + Math.max(0, x - 1)], b = tmpGray[o + x], c = tmpGray[o + Math.min(gw - 1, x + 1)];
+        gray[o + x] = (a + b + c) / 3;
+      }
+    }
+    for (let x = 0; x < gw; x++) {
+      for (let y = 0; y < gh; y++) {
+        tmpGray[y * gw + x] = (gray[Math.max(0, y - 1) * gw + x] + gray[y * gw + x] + gray[Math.min(gh - 1, y + 1) * gw + x]) / 3;
+      }
+    }
+    gray.set(tmpGray);
+    return true;
+  }
+
+  // Ambil GRID x GRID titik dari bagian tengah kotak (70%), digeser (dx, dy) px. -1 = di luar citra.
+  function sampleInto(box, dx, dy, out) {
+    const bw = box[2] * gw, bh = box[3] * gh;
+    const x0 = box[0] * gw + dx + bw * 0.15, y0 = box[1] * gh + dy + bh * 0.15;
+    const sx = (bw * 0.7) / (GRID - 1), sy = (bh * 0.7) / (GRID - 1);
+    let k = 0;
+    for (let gy = 0; gy < GRID; gy++) {
+      const yy = Math.round(y0 + gy * sy);
+      for (let gx = 0; gx < GRID; gx++) {
+        const xx = Math.round(x0 + gx * sx);
+        out[k++] = (xx < 0 || yy < 0 || xx >= gw || yy >= gh) ? -1 : gray[yy * gw + xx];
+      }
+    }
+    return out;
+  }
+
+  function sad(a, b) {
+    let s = 0, n = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] < 0 || b[i] < 0) continue;
+      s += Math.abs(a[i] - b[i]);
+      n++;
+    }
+    return n > a.length * 0.5 ? s / n : Infinity;
+  }
+
+  function stepTrack(t, now) {
+    if (!t.tmpl) return;
+    const r = Math.max(3, Math.min(RADIUS, Math.round(t.box[2] * gw * 0.35)));
+    // Pusat pencarian = posisi perkiraan dari kecepatan frame sebelumnya (gerakan cepat tetap terkejar).
+    const px = Math.round(t.vx || 0), py = Math.round(t.vy || 0);
+    let best = Infinity, bx = 0, by = 0;
+    for (let dy = py - r; dy <= py + r; dy++) {      // pencarian penuh per piksel (±74 rb operasi/wajah)
+      for (let dx = px - r; dx <= px + r; dx++) {
+        const d = sad(sampleInto(t.box, dx, dy, probe), t.tmpl);
+        if (d < best) { best = d; bx = dx; by = dy; }
+      }
+    }
+    if (best <= MAX_SAD) {
+      t.vx = bx * 0.7 + (t.vx || 0) * 0.3;
+      t.vy = by * 0.7 + (t.vy || 0) * 0.3;
+      t.box[0] += bx / gw;
+      t.box[1] += by / gh;
+      sampleInto(t.box, 0, 0, probe);                // perbarui template perlahan (cahaya/pose berubah)
+      for (let i = 0; i < probe.length; i++) {
+        if (probe[i] >= 0 && t.tmpl[i] >= 0) t.tmpl[i] = t.tmpl[i] * 0.85 + probe[i] * 0.15;
+      }
+    } else {
+      // Tidak yakin (wajah tertutup/berubah drastis): diam di tempat, redam kecepatan, tunggu koreksi server.
+      t.vx = (t.vx || 0) * 0.5;
+      t.vy = (t.vy || 0) * 0.5;
+    }
+    t.hist.push({ t: now, x: t.box[0], y: t.box[1] });
+    while (t.hist.length && now - t.hist[0].t > 2000) t.hist.shift();
+  }
+
+  function posAt(t, time) {
+    let p = null;
+    for (const h of t.hist) { if (h.t <= time) p = h; else break; }
+    return p || t.hist[0] || null;
+  }
+
+  // Terapkan jawaban server (frame diambil pada tCap): posisi dikompensasi gerakan lokal sejak tCap.
+  function syncTracks(faces, tCap) {
+    const seen = new Set();
+    faces.forEach((f) => {
+      seen.add(f.track_id);
+      const target = f.bbox.slice();
+      let t = S.tracks.get(f.track_id);
+      if (t) {
+        const p = posAt(t, tCap);
+        if (p) { target[0] += t.box[0] - p.x; target[1] += t.box[1] - p.y; }
+        const jump = Math.hypot(target[0] - t.box[0], target[1] - t.box[1]);
+        const a = jump > 0.12 ? 1 : 0.5;              // lompatan besar: langsung; kecil: haluskan
+        const ox = t.box[0], oy = t.box[1];
+        for (let i = 0; i < 4; i++) t.box[i] += (target[i] - t.box[i]) * a;
+        // Riwayat hanya mencatat gerakan pelacak, jadi geser juga sebesar koreksi ini.
+        const cx = t.box[0] - ox, cy = t.box[1] - oy;
+        t.hist.forEach((h) => { h.x += cx; h.y += cy; });
+      } else {
+        t = { box: target, hist: [] };
+        S.tracks.set(f.track_id, t);
+      }
+      t.id = f.track_id;
+      t.status = f.match_status;
+      t.quality = f.quality;
+      t.reasons = f.reasons;
+      t.identity = f.identity;
+      if (gray && gw) t.tmpl = sampleInto(t.box, 0, 0, t.tmpl || new Float32Array(GRID * GRID));
+    });
+    for (const id of [...S.tracks.keys()]) if (!seen.has(id)) S.tracks.delete(id);
+  }
+
+  function render(now) {
+    if (!S.active) return;
+    if (S.tracks.size && grabGray()) S.tracks.forEach((t) => stepTrack(t, now));
+    draw();
+    S.raf = requestAnimationFrame(render);
+  }
+
   function draw() {
     const v = el.video, c = el.overlay;
     const w = v.clientWidth, h = v.clientHeight;
@@ -165,9 +309,9 @@
     const ctx = c.getContext("2d");
     ctx.clearRect(0, 0, w, h);
     ctx.font = "600 13px system-ui, sans-serif";
-    S.faces.forEach((f) => {
-      const [x, y, bw, bh] = f.bbox;
-      const status = f.match_status || (f.quality === "POOR" ? "POOR" : "");
+    S.tracks.forEach((f) => {
+      const [x, y, bw, bh] = f.box;
+      const status = f.status || (f.quality === "POOR" ? "POOR" : "");
       const color = COLORS[status] || COLORS[""];
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;
@@ -178,8 +322,8 @@
       // Nama (No. RM) hanya dikirim server untuk pengguna berizin melihat identitas kandidat.
       // NEEDS_REVIEW diberi "?" agar jelas masih perlu verifikasi petugas.
       const label = f.identity
-        ? `${f.identity}${f.match_status === "NEEDS_REVIEW" ? " ?" : ""}`
-        : `T${String(f.track_id).split("-").pop()} ${status || "TRACKING"}`;
+        ? `${f.identity}${f.status === "NEEDS_REVIEW" ? " ?" : ""}`
+        : `T${String(f.id).split("-").pop()} ${status || "TRACKING"}`;
       const tw = ctx.measureText(label).width + 10;
       ctx.fillStyle = color;
       ctx.fillRect(x * w, Math.max(0, y * h - 20), tw, 20);
@@ -246,7 +390,7 @@
     get mode() { return S.mode; },
     get active() { return S.active; },
     status() {
-      return { active: S.active, fps: S.fps, latency: S.latency, faces: S.faces.length, error: S.error, station: S.station,
+      return { active: S.active, fps: S.fps, latency: S.latency, faces: S.tracks.size, error: S.error, station: S.station,
                totalFailures: S.totalFailures || 0, lastFailure: S.lastFailure || "" };
     },
   };
