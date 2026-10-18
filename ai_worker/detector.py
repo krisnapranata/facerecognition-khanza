@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from .errors import ModelUnavailableError
+from .runtime import configure_cv2_threads
 
 DETECTOR_VERSION = "opencv-zoo/yunet-2023mar"
 
@@ -40,6 +41,7 @@ class Detection:
 class FaceDetector:
     def __init__(self, model_path: str | Path, score_threshold: float = 0.8,
                  nms_threshold: float = 0.3, top_k: int = 50):
+        configure_cv2_threads()
         self.model_path = Path(model_path)
         if not self.model_path.is_file():
             raise ModelUnavailableError(f"model detektor tidak ditemukan: {self.model_path.name}")

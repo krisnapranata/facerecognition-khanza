@@ -7,7 +7,6 @@ versi model tidak bergantung pada backend.
 """
 from __future__ import annotations
 
-import os
 import threading
 from pathlib import Path
 
@@ -15,6 +14,7 @@ import cv2
 import numpy as np
 
 from .errors import ModelUnavailableError
+from .runtime import ai_threads, configure_cv2_threads
 
 MODEL_VERSION = "opencv-zoo/sface-2021dec/128"
 EMBEDDING_DIM = 128
@@ -31,6 +31,7 @@ def l2_normalize(vec: np.ndarray) -> np.ndarray:
 
 class FaceEmbedder:
     def __init__(self, model_path: str | Path, backend: str = "onnxruntime", threads: int | None = None):
+        configure_cv2_threads()
         self.model_path = Path(model_path)
         if not self.model_path.is_file():
             raise ModelUnavailableError(f"model embedding tidak ditemukan: {self.model_path.name}")
@@ -51,7 +52,9 @@ class FaceEmbedder:
                 raise ModelUnavailableError("onnxruntime tidak terpasang") from exc
             opts = ort.SessionOptions()
             opts.log_severity_level = 3
-            opts.intra_op_num_threads = threads or max(1, min(4, os.cpu_count() or 1))
+            # Sesuai kuota CPU container (bukan jumlah core host) agar tidak terjadi throttling.
+            opts.intra_op_num_threads = threads or ai_threads()
+            opts.inter_op_num_threads = 1
             self._session = ort.InferenceSession(
                 str(self.model_path), sess_options=opts, providers=["CPUExecutionProvider"]
             )

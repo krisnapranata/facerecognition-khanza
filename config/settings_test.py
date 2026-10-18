@@ -24,4 +24,5 @@ MEDIA_PRIVATE_ROOT = Path(_TMP) / "media_private"  # noqa: F405
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 FACE_WORKER_URL = "http://127.0.0.1:9"  # port tertutup: worker dianggap mati
+FACE_STATION_ASYNC_MATCH = False  # hasil pencocokan langsung tersedia dalam respons uji
 LOGGING = {"version": 1, "disable_existing_loggers": False, "root": {"level": "CRITICAL"}}

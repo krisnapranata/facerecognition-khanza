@@ -239,7 +239,9 @@ FACE_WORKER_URL = env("FACE_WORKER_URL", "http://127.0.0.1:8765").rstrip("/")
 FACE_DEFAULT_CAMERA = env("FACE_DEFAULT_CAMERA", "server")
 if FACE_DEFAULT_CAMERA not in {"usb", "server"}:
     raise ImproperlyConfigured("FACE_DEFAULT_CAMERA harus 'usb' atau 'server'")
-FACE_STATION_MAX_FPS = env_float("FACE_STATION_MAX_FPS", 4.0)
+FACE_STATION_MAX_FPS = env_float("FACE_STATION_MAX_FPS", 6.0)
+# Pencocokan & tulis DB dari stasiun kamera USB di background (False hanya untuk pengujian).
+FACE_STATION_ASYNC_MATCH = env_bool("FACE_STATION_ASYNC_MATCH", True)
 FACE_STATION_IDLE_SECONDS = env_int("FACE_STATION_IDLE_SECONDS", 60)
 FACE_STATION_MAX_FRAME_BYTES = env_int("FACE_STATION_MAX_FRAME_BYTES", 1024 * 1024)
 FACE_DETECTOR_MODEL = env("FACE_DETECTOR_MODEL", "models/face_detection_yunet_2023mar.onnx")

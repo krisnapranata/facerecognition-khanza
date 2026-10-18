@@ -11,9 +11,11 @@ docs/DEPLOY_PRODUCTION.md.
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
 from django.core.cache import cache
@@ -26,6 +28,8 @@ from ai_worker.worker import format_identity
 from apps.face_registry.engine import get_engine
 
 from . import services
+
+logger = logging.getLogger(__name__)
 
 STATION_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,40}$")
 STATIONS_KEY = "face_stations"
@@ -83,7 +87,7 @@ class Station:
             return faces
 
     def _maybe_match(self, track: Track, now: float, engine) -> None:
-        if track.best_aligned is None or track.match_status == "CANDIDATE":
+        if track.pending or track.best_aligned is None or track.match_status == "CANDIDATE":
             return
         if track.submissions >= self.max_submissions or track.age(now) < self.min_track_age:
             return
@@ -91,16 +95,43 @@ class Station:
             return
         aligned, score = track.best_aligned, track.best_score
         track.best_aligned, track.best_score = None, -1.0
-        embedding = engine.embedder.embed_aligned(aligned)
         track.submissions += 1
         track.last_submit_at = now
-        event = services.ingest_candidate({
-            "camera_id": self.camera_id, "track_id": track.track_id, "model_version": MODEL_VERSION,
-            "embedding": [float(v) for v in embedding], "quality_status": "GOOD", "quality_score": round(score, 3),
-        })
-        track.match_status = event.match_status
-        track.event_id = event.pk
-        track.identity = format_identity(services.candidate_identity(event))
+        if not track.match_status:
+            track.match_status = "MATCHING"
+        if settings.FACE_STATION_ASYNC_MATCH:
+            # Embedding + pencocokan + tulis DB (server database lain) di background agar frame
+            # berikutnya tidak tertahan; hasil tampil pada frame selanjutnya.
+            track.pending = True
+            _match_executor.submit(self._match_job, track, aligned, score, engine)
+        else:
+            self._match_job(track, aligned, score, engine)
+
+    def _match_job(self, track: Track, aligned, score: float, engine) -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            embedding = engine.embedder.embed_aligned(aligned)
+            event = services.ingest_candidate({
+                "camera_id": self.camera_id, "track_id": track.track_id, "model_version": MODEL_VERSION,
+                "embedding": [float(v) for v in embedding], "quality_status": "GOOD",
+                "quality_score": round(score, 3),
+            })
+            track.match_status = event.match_status
+            track.event_id = event.pk
+            track.identity = format_identity(services.candidate_identity(event))
+        except Exception:
+            logger.exception("Pencocokan stasiun %s gagal", self.station_id)
+            track.match_status = "ERROR"
+        finally:
+            track.pending = False
+            if settings.FACE_STATION_ASYNC_MATCH:
+                close_old_connections()
+
+
+# Pencocokan berjalan di thread terpisah (maks. 2 bersamaan) agar respons frame tetap cepat.
+_match_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="station-match")
 
 
 class StationManager:

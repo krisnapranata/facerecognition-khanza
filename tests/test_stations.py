@@ -1,6 +1,6 @@
 """Stasiun kamera USB di PC loket (frame dari browser) — tanpa kamera fisik, engine AI dipalsukan."""
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 
 from apps.face_events import stations
 from apps.face_events.models import FaceRecognitionEvent
@@ -94,3 +94,69 @@ class StationFrameTests(FaceTestCase):
         st.last_seen -= 10_000
         stations.manager.get("loket-4")  # memicu pembersihan
         self.assertIsNot(stations.manager.get("loket-3"), st)
+
+
+class StationAsyncMatchTests(FaceTestCase):
+    """Pencocokan di background: respons frame tidak menunggu embedding + tulis DB."""
+
+    def setUp(self):
+        super().setUp()
+        stations.manager.reset()
+        install_fake_engine(vector=unit_vector(77))
+        self.client.force_login(self.operator)
+
+    def send(self):
+        return self.client.post(URL.format("loket-a"), {"frame": SimpleUploadedFile("f.jpg", synthetic_jpeg(),
+                                                                                    content_type="image/jpeg")})
+
+    def test_frame_not_blocked_and_result_arrives_later(self):
+        import threading
+        import time
+        from unittest import mock
+
+        release = threading.Event()
+        fake_event = mock.Mock(match_status="CANDIDATE", pk=99, candidate_reference=None)
+
+        def slow_ingest(payload):
+            release.wait(5)  # mensimulasikan DB server lain yang lambat
+            return fake_event
+
+        with override_settings(FACE_STATION_ASYNC_MATCH=True), \
+                mock.patch("apps.face_events.stations.services.ingest_candidate", side_effect=slow_ingest), \
+                mock.patch("apps.face_events.stations.services.candidate_identity",
+                           return_value={"patient_name": "Pasien Uji Satu", "no_rkm_medis": "UJI-0001"}):
+            self.send()
+            st = stations.manager.get("loket-a")
+            st.min_track_age = 0
+            st.match_interval = 0
+            started = time.monotonic()
+            face = self.send().json()["data"]["faces"][0]
+            self.assertLess(time.monotonic() - started, 2.0)  # tidak menunggu ingest yang tertahan
+            self.assertEqual(face["match_status"], "MATCHING")
+            release.set()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                face = self.send().json()["data"]["faces"][0]
+                if face["match_status"] == "CANDIDATE":
+                    break
+                time.sleep(0.05)
+        self.assertEqual(face["match_status"], "CANDIDATE")
+        self.assertEqual(face["identity"], "Pasien Uji Satu (UJI-0001)")
+
+
+class AiThreadTuningTests(SimpleTestCase):
+    def test_override_and_bounds(self):
+        import os
+        from unittest import mock
+
+        from ai_worker import runtime
+
+        with mock.patch.dict(os.environ, {"FACE_AI_THREADS": "3"}):
+            self.assertEqual(runtime.ai_threads(), 3)
+        with mock.patch.dict(os.environ, {"FACE_AI_THREADS": ""}), \
+                mock.patch.object(runtime, "effective_cpus", return_value=2.5):
+            self.assertEqual(runtime.ai_threads(), 2)
+        with mock.patch.dict(os.environ, {"FACE_AI_THREADS": ""}), \
+                mock.patch.object(runtime, "effective_cpus", return_value=32):
+            self.assertEqual(runtime.ai_threads(), runtime.MAX_THREADS)
+        self.assertGreaterEqual(runtime.effective_cpus(), 1.0)
